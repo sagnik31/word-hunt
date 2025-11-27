@@ -17,7 +17,7 @@ Requirements:
   - uvicorn
   - numpy
 """
-
+from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional, Any, Dict
 
 from fastapi import FastAPI, HTTPException, Depends
@@ -29,6 +29,20 @@ app = FastAPI(
     title="Word Hot-Cold Game API",
     version="1.0.0",
     description="API to get the rank of a guessed word relative to a hidden target word.",
+)
+
+# TODO: replace with your actual GitHub Pages URL(s)
+origins = [
+    "https://sagnik31.github.io",
+    "https://sagnik31.github.io/word-hunt",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],        # or ["*"] for dev, but better to restrict
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # ---------- Pydantic models ----------
