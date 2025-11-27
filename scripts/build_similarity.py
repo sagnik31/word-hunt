@@ -5,7 +5,14 @@ build_similarity.py
 Hardcoded:
   - embeddings.npz -> input
   - similarity.txt -> output
+
+Output format (tab-separated):
+  word<TAB>other1:score,other2:score,...
+
+The "other" words are sorted descending by cosine similarity
+and do NOT include the word itself.
 """
+
 import sys
 import numpy as np
 import logging
@@ -13,11 +20,11 @@ from pathlib import Path
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
-EMB_PATH = "embeddings.npz"
-OUT_PATH = "similarity.txt"
+EMB_PATH = "data/embeddings.npz"
+OUT_PATH = "data/similarity.txt"
 
 
-def normalize_rows(x):
+def normalize_rows(x: np.ndarray) -> np.ndarray:
     norms = np.linalg.norm(x, axis=1, keepdims=True)
     norms[norms == 0] = 1.0
     return x / norms

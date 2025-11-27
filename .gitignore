@@ -1,2 +1,4 @@
 .vscode/
-glove.6B.300d.txt
+__pycache__/
+/data/glove.6B.300d.txt
+/data/embeddings.npz

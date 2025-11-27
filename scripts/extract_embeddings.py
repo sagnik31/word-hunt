@@ -10,6 +10,7 @@ Outputs:
   - embeddings.npz
   - missing.txt
 """
+
 import sys
 import numpy as np
 import logging
@@ -17,10 +18,10 @@ from pathlib import Path
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
-GLOVE_PATH = "glove.6B.300d.txt"
-NOUNS_PATH = "common_nouns.txt"
-OUT_PATH = "embeddings.npz"
-MISSING_PATH = "missing.txt"
+GLOVE_PATH = "data/glove.6B.300d.txt"
+NOUNS_PATH = "data/common_nouns.txt"
+OUT_PATH = "data/embeddings.npz"
+MISSING_PATH = "data/missing.txt"
 
 
 def read_nouns(path: str):
@@ -31,8 +32,7 @@ def read_nouns(path: str):
     """
     with open(path, "r", encoding="utf-8") as fh:
         text = fh.read()
-    # split() with no args splits on any whitespace (spaces, tabs, newlines)
-    tokens = text.split()
+    tokens = text.split()  # splits on all whitespace
     nouns = [t.strip().lower() for t in tokens if t.strip()]
     return nouns
 
