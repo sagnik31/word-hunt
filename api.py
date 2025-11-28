@@ -29,8 +29,8 @@ app = FastAPI(
 
 # ---- CORS (adjust origins for your GitHub Pages) ----
 origins = [
-    "https://<your-github-username>.github.io",
-    "https://<your-github-username>.github.io/<your-frontend-repo>",
+    "https://sagnik31.github.io",
+    "https://sagnik31.github.io/word-hunt",
 ]
 
 app.add_middleware(

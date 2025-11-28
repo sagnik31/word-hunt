@@ -2,7 +2,7 @@
 
 // TODO: replace this with your actual Render API base URL
 // e.g. "https://word-hunt-backend.onrender.com"
-const API_BASE_URL = "https://YOUR_RENDER_BASE_URL";
+const API_BASE_URL = "https://word-hunt-cevi.onrender.com";
 
 const healthUrl = `${API_BASE_URL}/health`;
 const guessUrl = `${API_BASE_URL}/guess`;
