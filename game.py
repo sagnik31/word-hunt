@@ -24,8 +24,8 @@ import logging
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 
-SIM_PATH = "similarity.txt"
-NOUNS_PATH = "common_nouns.txt"
+SIM_PATH = "data/similarity.txt"
+NOUNS_PATH = "data/common_nouns.txt"
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 
