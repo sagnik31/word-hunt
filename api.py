@@ -2,51 +2,47 @@
 """
 api.py
 
-FastAPI app exposing an HTTP API to get the rank of a guessed word
-relative to the current target in the WordGameEngine.
+FastAPI app exposing an HTTP API:
 
-Endpoints:
-  - GET  /health            : simple health check
-  - POST /guess             : takes a guess word and returns rank + metadata
+  - GET  /health
+  - POST /guess
+  - GET  /hint    (suggest a hot word)
+  - POST /quit    (reveal the answer)
 
-Run with:
-  uvicorn api:app --reload
-
-Requirements:
-  - fastapi
-  - uvicorn
-  - numpy
+Run locally:
+  uvicorn api:app --host 0.0.0.0 --port 8000
 """
-from fastapi.middleware.cors import CORSMiddleware
+
 from typing import Optional, Any, Dict
 
 from fastapi import FastAPI, HTTPException, Depends
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from game import WordGameEngine
 
 app = FastAPI(
     title="Word Hot-Cold Game API",
-    version="1.0.0",
+    version="1.1.0",
     description="API to get the rank of a guessed word relative to a hidden target word.",
 )
 
-# TODO: replace with your actual GitHub Pages URL(s)
+# ---- CORS (adjust origins for your GitHub Pages) ----
 origins = [
-    "https://sagnik31.github.io",
-    "https://sagnik31.github.io/word-hunt",
+    "https://<your-github-username>.github.io",
+    "https://<your-github-username>.github.io/<your-frontend-repo>",
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],        # or ["*"] for dev, but better to restrict
+    allow_origins=origins,  # or ["*"] while testing
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ---------- Pydantic models ----------
 
+# ---------- Pydantic models ----------
 
 class GuessRequest(BaseModel):
     word: str
@@ -69,43 +65,49 @@ class HealthResponse(BaseModel):
     target_word_loaded: bool
 
 
+class HintResponse(BaseModel):
+    word: str
+    rank: int
+    total: int
+    similarity: float
+    percentile: float
+    hotness: str
+
+
+class QuitResponse(BaseModel):
+    answer: str
+
+
 # ---------- Engine lifecycle & dependency ----------
 
-
 def get_engine() -> WordGameEngine:
-    """
-    FastAPI dependency that returns the singleton WordGameEngine.
-    Raises HTTP 500 if the engine is not initialized.
-    """
     engine = getattr(app.state, "engine", None)
     if engine is None:
-        # This should only happen if startup failed
         raise HTTPException(status_code=500, detail="Game engine not initialized.")
     return engine
 
 
 @app.on_event("startup")
 def startup_event() -> None:
-    """
-    Initialize the WordGameEngine once, at app startup.
-    """
     try:
         app.state.engine = WordGameEngine()
-    except Exception as e:  # noqa: BLE001 - broad OK for startup failure
-        # If initialization fails, we keep engine as None; /health will report it.
+    except Exception as e:  # noqa: BLE001
         app.state.engine = None
-        # Log to server console
         print(f"[startup] Failed to initialize WordGameEngine: {e}")
 
 
 # ---------- Endpoints ----------
 
+@app.get("/")
+def root():
+    return {
+        "message": "Word Hot-Cold Game API",
+        "endpoints": ["/health", "/guess", "/hint", "/quit", "/docs"],
+    }
+
 
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
-    """
-    Simple health check endpoint to verify the API and engine are up.
-    """
     engine = getattr(app.state, "engine", None)
     return HealthResponse(
         status="ok" if engine is not None else "degraded",
@@ -118,34 +120,7 @@ def make_guess_endpoint(
     payload: GuessRequest,
     engine: WordGameEngine = Depends(get_engine),
 ) -> GuessResponse:
-    """
-    Main API to make a guess.
-
-    Request body:
-      {
-        "word": "cat"
-      }
-
-    Response (example):
-      {
-        "guess": "cat",
-        "valid": true,
-        "error": null,
-        "is_correct": false,
-        "rank": 123,
-        "total": 1999,
-        "similarity": 0.45,
-        "percentile": 93.8,
-        "hotness": "Warm"
-      }
-    """
     result: Dict[str, Any] = engine.make_guess(payload.word)
-
-    # NOTE: you can choose whether to:
-    #   - always return 200 with valid=false for invalid guesses (current behavior), or
-    #   - raise HTTP 400 for invalid guesses.
-    # Here we return 200 and encode the error in the JSON, to keep the client logic simple.
-
     return GuessResponse(**{
         "guess": result.get("guess", ""),
         "valid": bool(result.get("valid", False)),
@@ -157,3 +132,27 @@ def make_guess_endpoint(
         "percentile": result.get("percentile"),
         "hotness": result.get("hotness"),
     })
+
+
+@app.get("/hint", response_model=HintResponse)
+def hint_endpoint(
+    engine: WordGameEngine = Depends(get_engine),
+) -> HintResponse:
+    """
+    Suggest a 'hot' word: randomly selected from top-N most similar words
+    to the current target.
+    """
+    info = engine.get_hint(top_n=10)
+    return HintResponse(**info)
+
+
+@app.post("/quit", response_model=QuitResponse)
+def quit_endpoint(
+    engine: WordGameEngine = Depends(get_engine),
+) -> QuitResponse:
+    """
+    Reveal the current target word.
+    (Does not reset the game by itself.)
+    """
+    answer = engine.get_answer()
+    return QuitResponse(answer=answer)

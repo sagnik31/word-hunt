@@ -13,27 +13,10 @@ Main class:
 
 Key methods:
   - make_guess(guess_word: str) -> dict
-  - set_target(target_word: Optional[str] = None) -> str   # pick/change target
-  - get_target() -> str                                    # for debugging/admin
-
-The make_guess() method returns a dict with:
-  {
-    "guess": str,
-    "valid": bool,
-    "error": Optional[str],
-    "is_correct": Optional[bool],
-    "rank": Optional[int],       # 1 = most similar (other than the target)
-    "total": Optional[int],      # total comparable words
-    "similarity": Optional[float],
-    "percentile": Optional[float],
-    "hotness": Optional[str],
-  }
-
-If guess == target, we treat:
-  similarity = 1.0
-  rank = 1
-  percentile = 100.0
-  hotness = "Correct"
+  - set_target(target_word: Optional[str] = None) -> str
+  - get_target() -> str
+  - get_hint(top_n: int = 10) -> dict
+  - get_answer() -> str
 """
 
 import random
@@ -41,8 +24,8 @@ import logging
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 
-SIM_PATH = "data/similarity.txt"
-NOUNS_PATH = "data/common_nouns.txt"
+SIM_PATH = "similarity.txt"
+NOUNS_PATH = "common_nouns.txt"
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 
@@ -78,23 +61,17 @@ class WordGameEngine:
         self.target_word: str = ""
         self.target_similarity_list: List[Tuple[str, float]] = []
         self.target_pos_map: Dict[str, int] = {}
-        self.target_total: int = 0  # number of comparable words (incl target logically)
+        self.target_total: int = 0
 
         self.set_target(target_word)
 
     def _load_vocab(self) -> List[str]:
-        """
-        Load vocabulary from common_nouns.txt as whitespace-separated tokens.
-        """
         with open(self.nouns_path, "r", encoding="utf-8") as fh:
             text = fh.read()
         tokens = text.split()
         return [t.strip().lower() for t in tokens if t.strip()]
 
     def _build_line_index(self) -> Dict[str, int]:
-        """
-        Build an index from word -> byte offset in similarity.txt.
-        """
         offsets: Dict[str, int] = {}
         with open(self.similarity_path, "r", encoding="utf-8") as fh:
             while True:
@@ -111,10 +88,6 @@ class WordGameEngine:
         return offsets
 
     def _read_similarity_row_at(self, offset: int) -> List[Tuple[str, float]]:
-        """
-        Read and parse the similarity row (list of (other_word, score))
-        at a given file offset.
-        """
         with open(self.similarity_path, "r", encoding="utf-8") as fh:
             fh.seek(offset)
             line = fh.readline()
@@ -141,9 +114,6 @@ class WordGameEngine:
 
     @staticmethod
     def _describe_hotness(similarity_score: float) -> str:
-        """
-        Map similarity (cosine) to human-friendly label.
-        """
         s = similarity_score
         if s >= 0.99:
             return "Correct"
@@ -162,11 +132,6 @@ class WordGameEngine:
         return "Freezing"
 
     def set_target(self, target_word: Optional[str] = None) -> str:
-        """
-        Set (or reset) the target word.
-        If target_word is None, pick a random target from words present in similarity.txt.
-        Returns the chosen target word.
-        """
         available = list(self.offsets.keys())
 
         if target_word is not None:
@@ -179,40 +144,60 @@ class WordGameEngine:
 
         self.target_word = chosen
 
-        # Load similarity row for this target
         offset = self.offsets[chosen]
         self.target_similarity_list = self._read_similarity_row_at(offset)
         self.target_total = len(self.target_similarity_list) + 1  # +1 for self
 
-        # Build a mapping from word -> rank index (0-based, 0 = most similar "other" word)
         self.target_pos_map = {w: idx for idx, (w, _) in enumerate(self.target_similarity_list)}
 
         return self.target_word
 
     def get_target(self) -> str:
+        return self.target_word
+
+    def get_answer(self) -> str:
         """
-        Return the current target word (for debugging/admin).
+        Return the current target word (for quit endpoint / debugging).
         """
         return self.target_word
 
+    def get_hint(self, top_n: int = 10) -> Dict[str, object]:
+        """
+        Return a 'hot' word: randomly chosen from the top-N most similar words
+        to the target (excluding the target itself).
+
+        Output dict:
+          - word
+          - rank
+          - total
+          - similarity
+          - percentile
+          - hotness
+        """
+        if not self.target_similarity_list:
+            raise RuntimeError("Target similarity list is empty; engine not initialized properly.")
+
+        n_others = len(self.target_similarity_list)
+        k = min(max(top_n, 1), n_others)
+
+        idx = random.randint(0, k - 1)
+        word, sim = self.target_similarity_list[idx]
+        rank = idx + 1
+
+        total_others = max(1, self.target_total - 1)
+        percentile = 100.0 * (1.0 - (rank - 1) / total_others)
+        hotness = self._describe_hotness(sim)
+
+        return {
+            "word": word,
+            "rank": rank,
+            "total": self.target_total,
+            "similarity": sim,
+            "percentile": percentile,
+            "hotness": hotness,
+        }
+
     def make_guess(self, guess_word: str) -> Dict[str, Optional[object]]:
-        """
-        Core API for guessing.
-
-        Input:
-          guess_word: the user's guessed word (any casing, extra spaces allowed).
-
-        Output: dict with:
-          - guess: normalized guess
-          - valid: bool (False if not in vocab / similarity data / empty, etc.)
-          - error: error message string if valid is False, else None
-          - is_correct: True / False / None (None when invalid)
-          - rank: int or None (1 = highest similarity; for correct guess we use rank=1)
-          - total: int or None (total comparable words, including target logically)
-          - similarity: float or None
-          - percentile: float or None  (how close to top; 100 = best)
-          - hotness: str or None       (Boiling, Warm, Cold, etc.)
-        """
         guess_norm = (guess_word or "").strip().lower()
 
         base_response: Dict[str, Optional[object]] = {
@@ -231,20 +216,16 @@ class WordGameEngine:
             base_response["error"] = "Empty guess."
             return base_response
 
-        # Check if in overall vocab
         if guess_norm not in self.vocab_set:
             base_response["error"] = "Word is not in the allowed vocabulary."
             return base_response
 
-        # Check if we have similarity data for this word at all
         if guess_norm not in self.offsets:
             base_response["error"] = "Word is missing from similarity data."
             return base_response
 
-        # Now the guess is at least vocab-valid
         base_response["valid"] = True
 
-        # Correct guess
         if guess_norm == self.target_word:
             sim = 1.0
             rank = 1
@@ -263,14 +244,11 @@ class WordGameEngine:
             )
             return base_response
 
-        # Not correct: look up in target's similarity list
-        # First, try the fast map
         if guess_norm in self.target_pos_map:
             idx = self.target_pos_map[guess_norm]
-            rank = idx + 1  # 1-based rank (1 = most similar "other" word)
+            rank = idx + 1
             sim = self.target_similarity_list[idx][1]
         else:
-            # Fallback: scan list in case of mismatch (shouldn't normally happen)
             idx = None
             sim = None
             for j, (w, sc) in enumerate(self.target_similarity_list):
@@ -284,7 +262,6 @@ class WordGameEngine:
                 return base_response
             rank = idx + 1
 
-        # Compute percentile (1.0 ~ top, 0.0 ~ bottom)
         total_others = max(1, self.target_total - 1)
         percentile = 100.0 * (1.0 - (rank - 1) / total_others)
         hotness = self._describe_hotness(sim)
@@ -302,7 +279,7 @@ class WordGameEngine:
         return base_response
 
 
-# Optional: keep a CLI for testing
+# CLI mode for local testing (unchanged)
 def _play_cli():
     try:
         engine = WordGameEngine()

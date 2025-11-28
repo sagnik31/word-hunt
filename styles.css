@@ -130,3 +130,13 @@ button:disabled {
   font-size: 0.9rem;
   color: #d1d5db;
 }
+
+.action-row {
+  margin-top: 0.75rem;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.action-row button {
+  flex: 1;
+}
