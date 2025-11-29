@@ -79,25 +79,30 @@ class WordGameEngine:
         print(f"[WordGameEngine] Initialized successfully with target: {self.target_word}")
 
     def set_target(self, target_word: Optional[str] = None) -> str:
-        available = list(self.offsets.keys())
+    available = list(self.offsets.keys())
 
-        if target_word is not None:
-            target_word = target_word.strip().lower()
-            if target_word not in self.offsets:
-                raise ValueError(f"Requested target not in similarity data: {target_word}")
-            chosen = target_word
-        else:
-            chosen = random.choice(available)
+    # If a specific target is requested, use it and validate once
+    if target_word is not None:
+        target_word = target_word.strip().lower()
+        if target_word not in self.offsets:
+            raise ValueError(f"Requested target not in similarity data: {target_word}")
+        candidates = [target_word]
+    else:
+        candidates = available
 
-        self.target_word = chosen
-
+    for _ in range(len(candidates) * 3):  # some upper bound on attempts
+        chosen = random.choice(candidates)
         offset = self.offsets[chosen]
-        self.target_similarity_list = read_similarity_row(str(self.similarity_path), offset)
-        self.target_total = len(self.target_similarity_list) + 1  # +1 for self
+        sims = read_similarity_row(str(self.similarity_path), offset)
 
-        self.target_pos_map = {w: idx for idx, (w, _) in enumerate(self.target_similarity_list)}
+        if sims:  # only accept targets with non-empty similarity list
+            self.target_word = chosen
+            self.target_similarity_list = sims
+            self.target_total = len(sims) + 1  # +1 for self
+            self.target_pos_map = {w: idx for idx, (w, _) in enumerate(sims)}
+            return self.target_word
 
-        return self.target_word
+    raise RuntimeError("Could not find a target with a non-empty similarity list.")
 
     def get_target(self) -> str:
         return self.target_word
