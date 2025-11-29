@@ -83,6 +83,35 @@ class WordGameEngine:
 
         if target_word is not None:
             target_word = target_word.strip().lower()
+            if target_word not in self.offsets:
+                raise ValueError(f"Requested target not in similarity data: {target_word}")
+            chosen = target_word
+        else:
+            chosen = random.choice(available)
+
+        self.target_word = chosen
+
+        offset = self.offsets[chosen]
+        self.target_similarity_list = read_similarity_row(str(self.similarity_path), offset)
+        self.target_total = len(self.target_similarity_list) + 1  # +1 for self
+
+        self.target_pos_map = {w: idx for idx, (w, _) in enumerate(self.target_similarity_list)}
+
+        return self.target_word
+
+    def get_target(self) -> str:
+        return self.target_word
+
+    def get_answer(self) -> str:
+        """
+        Return the current target word (for quit endpoint / debugging).
+        """
+        return self.target_word
+
+    def get_hint(self, top_n: int = 10) -> Dict[str, object]:
+        """
+        Return a 'hot' word: randomly chosen from the top-N most similar words
+        to the target (excluding the target itself).
         """
         return get_hint(self.target_similarity_list, self.target_total, top_n)
 
