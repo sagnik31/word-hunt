@@ -9,7 +9,7 @@ def test_read_root():
     assert response.status_code == 200
     assert response.json() == {
         "message": "Word Hot-Cold Game API",
-        "endpoints": ["/health", "/guess", "/hint", "/quit", "/docs"],
+        "endpoints": ["/health", "/guess", "/similar_word", "/quit", "/docs"],
     }
 
 def test_health_check():

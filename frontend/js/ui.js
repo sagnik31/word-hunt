@@ -12,11 +12,13 @@ export class GameUI {
         this.historySection = document.getElementById("history");
         this.historyList = document.getElementById("history-list");
         this.guessButton = document.getElementById("guess-button");
+        this.similarWordButton = document.getElementById("similar-word-button");
         this.hintButton = document.getElementById("hint-button");
         this.quitButton = document.getElementById("quit-button");
 
         // Bind events
         this.formEl.addEventListener("submit", (e) => this.handleGuessSubmit(e));
+        this.similarWordButton.addEventListener("click", () => this.handleSimilarWordClick());
         this.hintButton.addEventListener("click", () => this.handleHintClick());
         this.quitButton.addEventListener("click", () => this.handleQuitClick());
     }
@@ -80,8 +82,11 @@ export class GameUI {
         this.historySection.classList.remove("hidden");
         const li = document.createElement("li");
 
-        if (result.type === "hint") {
-            li.textContent = `💡 Hint: try "${result.word}" — rank #${result.rank}/${result.total - 1
+        if (result.type === "similar word") {
+            li.textContent = `💡 Similar Word: try "${result.word}" — rank #${result.rank}/${result.total - 1
+                }, sim=${result.similarity.toFixed(3)}, ${result.hotness}`;
+        } else if (result.type === "hint") {
+            li.textContent = `🧠 Hint: try "${result.word}" — rank #${result.rank}/${result.total - 1
                 }, sim=${result.similarity.toFixed(3)}, ${result.hotness}`;
         } else if (result.type === "quit") {
             li.textContent = `🚪 You quit. The answer was "${result.answer}".`;
@@ -124,6 +129,30 @@ export class GameUI {
         }
     }
 
+    async handleSimilarWordClick() {
+        if (this.gameOver) return;
+
+        this.similarWordButton.disabled = true;
+        try {
+            const similarWord = await this.api.getSimilarWord();
+
+            this.resultSection.classList.remove("hidden");
+            this.resultText.className = "";
+            this.resultText.textContent = `💡 Similar Word: try "${similarWord.word}" — rank #${similarWord.rank}/${similarWord.total - 1
+                }, similarity=${similarWord.similarity.toFixed(4)} (${similarWord.percentile.toFixed(
+                    1
+                )} percentile) — ${similarWord.hotness}`;
+
+            this.applyHotnessColor(similarWord.hotness);
+            this.addToHistory({ ...similarWord, type: "similar word" });
+        } catch (err) {
+            console.error("Similar Word request failed:", err);
+            this.showError("Error fetching a similar word from the server. Please try again.");
+        } finally {
+            this.similarWordButton.disabled = false;
+        }
+    }
+
     async handleHintClick() {
         if (this.gameOver) return;
 
@@ -133,7 +162,7 @@ export class GameUI {
 
             this.resultSection.classList.remove("hidden");
             this.resultText.className = "";
-            this.resultText.textContent = `💡 Hint: try "${hint.word}" — rank #${hint.rank}/${hint.total - 1
+            this.resultText.textContent = `🧠 Hint: try "${hint.word}" — rank #${hint.rank}/${hint.total - 1
                 }, similarity=${hint.similarity.toFixed(4)} (${hint.percentile.toFixed(
                     1
                 )} percentile) — ${hint.hotness}`;
@@ -178,12 +207,14 @@ export class GameUI {
 
     disableControls() {
         this.guessButton.disabled = true;
+        this.similarWordButton.disabled = true;
         this.hintButton.disabled = true;
         this.quitButton.disabled = true;
     }
 
     enableControls() {
         this.guessButton.disabled = false;
+        this.similarWordButton.disabled = false;
         this.hintButton.disabled = false;
         this.quitButton.disabled = false;
     }

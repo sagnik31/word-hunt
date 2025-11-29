@@ -40,7 +40,7 @@ Gameplay loop:
 
   * `GET /health`
   * `POST /guess`
-  * `GET /hint`
+  * `GET /similar_word`
   * `POST /quit`
 
 ### Frontend → GitHub Pages

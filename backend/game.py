@@ -1,31 +1,11 @@
-#!/usr/bin/env python3
-"""
-game.py
-
-Core word game engine.
-
-Hardcoded files:
-  - similarity.txt
-  - common_nouns.txt
-
-Main class:
-  - WordGameEngine
-
-Key methods:
-  - make_guess(guess_word: str) -> dict
-  - set_target(target_word: Optional[str] = None) -> str
-  - get_target() -> str
-  - get_hint(top_n: int = 10) -> dict
-  - get_answer() -> str
-"""
-
 import logging
 import random
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from backend.actions.guess import make_guess
-from backend.actions.hint import get_hint
+from backend.actions.similar_word import get_similar_word
+from backend.actions.hint import get_hint  # if you still use this elsewhere
 from backend.config import NOUNS_PATH, SIMILARITY_PATH
 from backend.utils.loaders import build_line_index, load_vocab, read_similarity_row
 
@@ -80,6 +60,10 @@ class WordGameEngine:
         self.target_pos_map: Dict[str, int] = {}
         self.target_total: int = 0
 
+        # Game state: best rank across guesses + hints, and number of hints
+        self.best_rank_overall: Optional[int] = None
+        self.hint_count: int = 0
+
         self.set_target(target_word)
         print(
             f"[WordGameEngine] Initialized successfully with target: {self.target_word}"
@@ -109,6 +93,11 @@ class WordGameEngine:
                 self.target_similarity_list = sims
                 self.target_total = len(sims) + 1  # +1 for self
                 self.target_pos_map = {w: idx for idx, (w, _) in enumerate(sims)}
+
+                # Reset game state when changing target
+                self.best_rank_overall = None
+                self.hint_count = 0
+
                 return self.target_word
 
         raise RuntimeError("Could not find a target with a non-empty similarity list.")
@@ -122,15 +111,65 @@ class WordGameEngine:
         """
         return self.target_word
 
-    def get_hint(self, top_n: int = 10) -> Dict[str, object]:
+    # --- New helper state methods ---------------------------------------
+
+    def _update_best_rank(self, rank: int) -> None:
+        if rank is None:
+            return
+        if self.best_rank_overall is None:
+            self.best_rank_overall = rank
+        else:
+            self.best_rank_overall = min(self.best_rank_overall, rank)
+
+    def _determine_hint_strength(self) -> str:
         """
-        Return a 'hot' word: randomly chosen from the top-N most similar words
-        to the target (excluding the target itself).
+        First 3 hints are 'soft', subsequent ones are 'strong'.
         """
-        return get_hint(self.target_similarity_list, self.target_total, top_n)
+        if self.hint_count < 3:
+            return "soft"
+        return "strong"
+
+    # --- Hint / similar word endpoints ----------------------------------
+
+    def get_similar_word(self) -> Dict[str, object]:
+        """
+        Backend decides whether the hint is soft or strong based on how many
+        hints have already been given.
+        """
+        strength = self._determine_hint_strength()
+        hint = get_similar_word(
+            self.target_similarity_list,
+            self.target_total,
+            self.best_rank_overall,
+            strength,
+        )
+
+        # Update state
+        self.hint_count += 1
+        self._update_best_rank(hint.get("rank"))
+
+        return hint
+
+    def get_hint(self) -> Dict[str, object]:
+       """
+        Backend decides whether the hint is soft or strong based on how many
+        hints have already been given.
+        """
+       strength = self._determine_hint_strength()
+       hint = get_hint(
+            self.target_similarity_list,
+            self.target_total,
+            self.best_rank_overall,
+            strength,
+        )
+       self.hint_count += 1
+       self._update_best_rank(hint.get("rank"))
+       return hint
+
+    # --- Guess handling -------------------------------------------------
 
     def make_guess(self, guess_word: str) -> Dict[str, Optional[object]]:
-        return make_guess(
+        result = make_guess(
             guess_word,
             self.target_word,
             self.target_similarity_list,
@@ -140,55 +179,8 @@ class WordGameEngine:
             self.offsets,
         )
 
+        # Update best_rank_overall based on guess rank
+        if result.get("valid") and result.get("rank") is not None:
+            self._update_best_rank(result["rank"])
 
-# CLI mode for local testing (unchanged)
-def _play_cli():
-    try:
-        engine = WordGameEngine()
-    except Exception as e:
-        logging.error(f"Failed to start game engine: {e}")
-        return
-
-    logging.info("🎯 Hot & Cold Word Game — CLI mode")
-    logging.info("Type 'quit' to exit. Type 'target' to reveal the word (debug).")
-    logging.info("")
-
-    while True:
-        try:
-            guess = input("Guess> ")
-        except (KeyboardInterrupt, EOFError):
-            print()
-            logging.info("Goodbye.")
-            return
-
-        guess_strip = guess.strip().lower()
-        if guess_strip == "quit":
-            logging.info(f"Target was: {engine.get_target()}")
-            return
-        if guess_strip == "target":
-            logging.info(f"[DEBUG] Current target: {engine.get_target()}")
-            continue
-
-        result = engine.make_guess(guess)
-        if not result["valid"]:
-            logging.info(f"Invalid guess: {result['error']}")
-            continue
-
-        if result["is_correct"]:
-            logging.info("🎉 Correct! You found the target word.")
-            logging.info(
-                f"Word: {result['guess']} | rank={result['rank']} "
-                f"| similarity={result['similarity']:.4f}"
-            )
-            return
-
-        logging.info(
-            f"Guess: '{result['guess']}' | "
-            f"rank #{result['rank']}/{result['total'] - 1} | "
-            f"sim={result['similarity']:.4f} "
-            f"({result['percentile']:.1f} percentile) — {result['hotness']}"
-        )
-
-
-if __name__ == "__main__":
-    _play_cli()
+        return result

@@ -19,14 +19,34 @@
     <main>
       <form id="guess-form" autocomplete="off">
         <label for="guess-input">Your guess:</label>
+
+        <!-- Row 1: input + Guess (unchanged) -->
         <div class="input-row">
-          <input type="text" id="guess-input" name="guess" placeholder="Type a common noun (e.g. cat, table)..."
-            required />
+          <input
+            type="text"
+            id="guess-input"
+            name="guess"
+            placeholder="Type a common noun (e.g. cat, table)."
+            required
+          />
           <button type="submit" id="guess-button">Guess</button>
         </div>
+
+        <!-- Row 2: Similar Word + Hint -->
         <div class="action-row">
-          <button type="button" id="hint-button">Hint</button>
-          <button type="button" id="quit-button">Quit</button>
+          <button type="button" id="similar-word-button" class="action-button">
+            Similar Word
+          </button>
+          <button type="button" id="hint-button" class="action-button">
+            Hint
+          </button>
+        </div>
+
+        <!-- Row 3: Quit centered -->
+        <div class="quit-row">
+          <button type="button" id="quit-button" class="action-button quit-button">
+            Quit
+          </button>
         </div>
       </form>
 
@@ -43,7 +63,13 @@
 
     <footer>
       <p>
-        Backend: <code>/guess</code>, <code>/hint</code>, <code>/quit</code> on Render • Frontend: GitHub Pages
+        Backend:
+        <code>/health</code>,
+        <code>/guess</code>,
+        <code>/similar_word</code>,
+        <code>/hint</code>,
+        <code>/quit</code>
+        on Render • Frontend: GitHub Pages
       </p>
     </footer>
   </div>

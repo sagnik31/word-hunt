@@ -1,6 +1,6 @@
 from typing import Dict, List, Optional, Set, Tuple
 
-from backend.utils.scoring import describe_hotness
+from backend.utils.scoring import describe_hotness, compute_percentile
 
 
 def make_guess(
@@ -40,11 +40,12 @@ def make_guess(
 
     base_response["valid"] = True
 
+    # Correct guess case
     if guess_norm == target_word:
         sim = 1.0
         rank = 1
         percentile = 100.0
-        hotness = describe_hotness(sim)
+        hotness = describe_hotness(rank, target_total)
 
         base_response.update(
             {
@@ -58,6 +59,7 @@ def make_guess(
         )
         return base_response
 
+    # In-vocab, not equal to target: find its rank & similarity
     if guess_norm in target_pos_map:
         idx = target_pos_map[guess_norm]
         rank = idx + 1
@@ -78,9 +80,9 @@ def make_guess(
             return base_response
         rank = idx + 1
 
-    total_others = max(1, target_total - 1)
-    percentile = 100.0 * (1.0 - (rank - 1) / total_others)
-    hotness = describe_hotness(sim)
+    # Percentile & hotness are now rank-based
+    percentile = compute_percentile(rank, target_total)
+    hotness = describe_hotness(rank, target_total)
 
     base_response.update(
         {

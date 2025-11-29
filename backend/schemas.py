@@ -1,7 +1,8 @@
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel
 
+HintStrength = Literal["soft", "strong"]
 
 class GuessRequest(BaseModel):
     word: str
@@ -22,6 +23,15 @@ class GuessResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     target_word_loaded: bool
+
+
+class SimilarWordResponse(BaseModel):
+    word: str
+    rank: int
+    total: int
+    similarity: float
+    percentile: float
+    hotness: str
 
 
 class HintResponse(BaseModel):

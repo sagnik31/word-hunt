@@ -131,12 +131,30 @@ button:disabled {
   color: #d1d5db;
 }
 
+/* Row 2: Similar Word + Hint */
 .action-row {
   margin-top: 0.75rem;
   display: flex;
   gap: 0.5rem;
 }
 
-.action-row button {
+/* Make both row-2 buttons equal width and same size */
+.action-row .action-button {
   flex: 1;
+  text-align: center;
+}
+
+/* Row 3: Quit centered */
+.quit-row {
+  margin-top: 0.75rem;
+  display: flex;
+  justify-content: center;
+}
+
+/* Quit button same sizing as Hint/Similar Word */
+.quit-row .quit-button {
+  min-width: 0;
+  width: 50%;
+  max-width: 50%;
+  text-align: center;
 }

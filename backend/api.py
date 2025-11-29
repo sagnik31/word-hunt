@@ -6,7 +6,7 @@ FastAPI app exposing an HTTP API:
 
   - GET  /health
   - POST /guess
-  - GET  /hint    (suggest a hot word)
+  - GET  /similar_word    (suggest a hot word)
   - POST /quit    (reveal the answer)
 
 Run locally:
@@ -20,7 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.config import CORS_ORIGINS
 from backend.game import WordGameEngine
-from backend.routes import guess, health, hint, quit
+from backend.routes import guess, health, similar_word, hint, quit
 
 app = FastAPI(
     title="Word Hot-Cold Game API",
@@ -40,6 +40,7 @@ app.add_middleware(
 # Include routers
 app.include_router(health.router)
 app.include_router(guess.router)
+app.include_router(similar_word.router)
 app.include_router(hint.router)
 app.include_router(quit.router)
 
@@ -57,7 +58,7 @@ def startup_event() -> None:
     except Exception as e:
         app.state.engine = None
         print(f"[startup] Failed to initialize WordGameEngine: {e}")
-        print(f"[startup] Full traceback:")
+        print("[startup] Full traceback:")
         traceback.print_exc()
 
 
@@ -65,5 +66,5 @@ def startup_event() -> None:
 def root():
     return {
         "message": "Word Hot-Cold Game API",
-        "endpoints": ["/health", "/guess", "/hint", "/quit", "/docs"],
+        "endpoints": ["/health", "/guess", "/similar_word", "/quit", "/docs"],
     }

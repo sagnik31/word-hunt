@@ -48,7 +48,7 @@ def _choose_hint_index(
     return random.randint(low_rank - 1, high_rank - 1)
 
 
-def get_hint(
+def get_similar_word(
     target_similarity_list: List[Tuple[str, float]],
     target_total: int,
     best_rank_overall: Optional[int],
