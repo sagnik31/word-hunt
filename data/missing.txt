@@ -1,3 +1,14 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:733a5be65c4e2891f1b2ba3df3998ea1a1d88a891e3b194aa14ca49e262e2a34
-size 154
+anethesiologist
+c-clamp
+fedelini
+luttuce
+lyocell
+mini-skirt
+multi-hop
+plier
+step-aunt
+step-grandfather
+step-uncle
+stopsign
+weeder
+windchime

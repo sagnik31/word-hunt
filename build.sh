@@ -1,7 +1,4 @@
 #!/bin/bash
-# Install Git LFS
-git lfs install
-# Pull LFS files
-git lfs pull
-# Install Python dependencies
+set -euxo pipefail
+
 pip install -r requirements.txt
