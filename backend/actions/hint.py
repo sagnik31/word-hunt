@@ -5,12 +5,12 @@ from backend.utils.scoring import describe_hotness
 
 
 def get_hint(
-    target_similarity_list: List[Tuple[str, float]],
-    target_total: int,
-    top_n: int = 10
+    target_similarity_list: List[Tuple[str, float]], target_total: int, top_n: int = 10
 ) -> Dict[str, object]:
     if not target_similarity_list:
-        raise RuntimeError("Target similarity list is empty; engine not initialized properly.")
+        raise RuntimeError(
+            "Target similarity list is empty; engine not initialized properly."
+        )
 
     n_others = len(target_similarity_list)
     k = min(max(top_n, 1), n_others)

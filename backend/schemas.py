@@ -6,6 +6,7 @@ from pydantic import BaseModel
 class GuessRequest(BaseModel):
     word: str
 
+
 class GuessResponse(BaseModel):
     guess: str
     valid: bool
@@ -17,9 +18,11 @@ class GuessResponse(BaseModel):
     percentile: Optional[float] = None
     hotness: Optional[str] = None
 
+
 class HealthResponse(BaseModel):
     status: str
     target_word_loaded: bool
+
 
 class HintResponse(BaseModel):
     word: str
@@ -28,6 +31,7 @@ class HintResponse(BaseModel):
     similarity: float
     percentile: float
     hotness: str
+
 
 class QuitResponse(BaseModel):
     answer: str

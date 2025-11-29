@@ -51,7 +51,9 @@ def startup_event() -> None:
         app.state.engine = WordGameEngine()
         print("[startup] WordGameEngine initialized successfully!")
         print(f"[startup] Target word set to: {app.state.engine.get_target()}")
-        print(f"[startup] Target similarity list length: {len(app.state.engine.target_similarity_list)}")
+        print(
+            f"[startup] Target similarity list length: {len(app.state.engine.target_similarity_list)}"
+        )
     except Exception as e:
         app.state.engine = None
         print(f"[startup] Failed to initialize WordGameEngine: {e}")

@@ -7,6 +7,7 @@ def load_vocab(path: str) -> List[str]:
     tokens = text.split()
     return [t.strip().lower() for t in tokens if t.strip()]
 
+
 def build_line_index(path: str) -> Dict[str, int]:
     offsets: Dict[str, int] = {}
     with open(path, "r", encoding="utf-8") as fh:
@@ -22,6 +23,7 @@ def build_line_index(path: str) -> Dict[str, int]:
             if word:
                 offsets[word] = pos
     return offsets
+
 
 def read_similarity_row(path: str, offset: int) -> List[Tuple[str, float]]:
     with open(path, "r", encoding="utf-8") as fh:

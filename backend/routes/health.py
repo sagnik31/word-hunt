@@ -4,6 +4,7 @@ from backend.schemas import HealthResponse
 
 router = APIRouter()
 
+
 @router.get("/health", response_model=HealthResponse)
 def health(request: Request) -> HealthResponse:
     engine = getattr(request.app.state, "engine", None)

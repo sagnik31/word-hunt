@@ -27,8 +27,7 @@ from typing import Dict, List, Optional, Tuple
 from backend.actions.guess import make_guess
 from backend.actions.hint import get_hint
 from backend.config import NOUNS_PATH, SIMILARITY_PATH
-from backend.utils.loaders import (build_line_index, load_vocab,
-                                   read_similarity_row)
+from backend.utils.loaders import build_line_index, load_vocab, read_similarity_row
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 

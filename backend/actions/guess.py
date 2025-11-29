@@ -71,7 +71,9 @@ def make_guess(
                 sim = sc
                 break
         if idx is None or sim is None:
-            base_response["error"] = "Internal error: guess not found in target similarity list."
+            base_response["error"] = (
+                "Internal error: guess not found in target similarity list."
+            )
             base_response["valid"] = False
             return base_response
         rank = idx + 1

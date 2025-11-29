@@ -6,6 +6,7 @@ from backend.schemas import HintResponse
 
 router = APIRouter()
 
+
 @router.get("/hint", response_model=HintResponse)
 def hint_endpoint(
     engine: WordGameEngine = Depends(get_engine),

@@ -50,7 +50,9 @@ def extract():
 
     nouns = read_nouns(NOUNS_PATH)
     if not nouns:
-        logging.error(f"No nouns could be read from {NOUNS_PATH}. Check the file content.")
+        logging.error(
+            f"No nouns could be read from {NOUNS_PATH}. Check the file content."
+        )
         sys.exit(1)
 
     nouns_set = set(nouns)
@@ -104,7 +106,9 @@ def extract():
     embedding_matrix = np.vstack([found_vectors[w] for w in valid_words])
 
     logging.info(f"Saving {len(valid_words)} embeddings to {OUT_PATH}")
-    np.savez_compressed(OUT_PATH, words=np.array(valid_words, dtype=object), embeddings=embedding_matrix)
+    np.savez_compressed(
+        OUT_PATH, words=np.array(valid_words, dtype=object), embeddings=embedding_matrix
+    )
 
     logging.info("Done!")
 

@@ -6,6 +6,7 @@ from backend.schemas import QuitResponse
 
 router = APIRouter()
 
+
 @router.post("/quit", response_model=QuitResponse)
 def quit_endpoint(
     engine: WordGameEngine = Depends(get_engine),
