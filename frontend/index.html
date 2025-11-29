@@ -1,11 +1,13 @@
 <!doctype html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8" />
   <title>Word Hot/Cold Game</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="styles.css" />
 </head>
+
 <body>
   <div class="app">
     <header>
@@ -18,13 +20,8 @@
       <form id="guess-form" autocomplete="off">
         <label for="guess-input">Your guess:</label>
         <div class="input-row">
-          <input
-            type="text"
-            id="guess-input"
-            name="guess"
-            placeholder="Type a common noun (e.g. cat, table)..."
-            required
-          />
+          <input type="text" id="guess-input" name="guess" placeholder="Type a common noun (e.g. cat, table)..."
+            required />
           <button type="submit" id="guess-button">Guess</button>
         </div>
         <div class="action-row">
@@ -45,12 +42,57 @@
     </main>
 
     <footer>
-      <p>
-        Backend: <code>/guess</code>, <code>/hint</code>, <code>/quit</code> on Render • Frontend: GitHub Pages
-      </p>
-    </footer>
-  </div>
+      <!doctype html>
+      <html lang="en">
 
-  <script src="app.js"></script>
-</body>
-</html>
+      <head>
+        <meta charset="utf-8" />
+        <title>Word Hot/Cold Game</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <link rel="stylesheet" href="styles.css" />
+      </head>
+
+      <body>
+        <div class="app">
+          <header>
+            <h1>Word Hot/Cold Game</h1>
+            <p>Guess the hidden word. We'll tell you how close you are.</p>
+            <p class="status" id="status">Checking server status…</p>
+          </header>
+
+          <main>
+            <form id="guess-form" autocomplete="off">
+              <label for="guess-input">Your guess:</label>
+              <div class="input-row">
+                <input type="text" id="guess-input" name="guess" placeholder="Type a common noun (e.g. cat, table)..."
+                  required />
+                <button type="submit" id="guess-button">Guess</button>
+              </div>
+              <div class="action-row">
+                <button type="button" id="hint-button">Hint</button>
+                <button type="button" id="quit-button">Quit</button>
+              </div>
+            </form>
+
+            <section id="result" class="result hidden">
+              <h2>Result</h2>
+              <p id="result-text"></p>
+            </section>
+
+            <section id="history" class="history hidden">
+              <h2>Guess History</h2>
+              <ul id="history-list"></ul>
+            </section>
+          </main>
+
+          <footer>
+            <p>
+              Backend: <code>/guess</code>, <code>/hint</code>, <code>/quit</code> on Render • Frontend: GitHub Pages
+            </p>
+          </footer>
+        </div>
+
+        <script type="module" src="js/main.js"></script>
+      </body>
+
+      </html>

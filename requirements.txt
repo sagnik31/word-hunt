@@ -1,3 +1,5 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:d3dcedf77479818c579780c465e1ec1cd98b8739810b26c963cd6dd4eba13501
-size 33
+numpy
+fastapi
+uvicorn[standard]
+pytest
+httpx
