@@ -19,15 +19,16 @@ Key methods:
   - get_answer() -> str
 """
 
-import random
 import logging
+import random
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Optional, Tuple
 
-from backend.config import SIMILARITY_PATH, NOUNS_PATH
-from backend.utils.loaders import load_vocab, build_line_index, read_similarity_row
 from backend.actions.guess import make_guess
 from backend.actions.hint import get_hint
+from backend.config import NOUNS_PATH, SIMILARITY_PATH
+from backend.utils.loaders import (build_line_index, load_vocab,
+                                   read_similarity_row)
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 
@@ -46,13 +47,16 @@ class WordGameEngine:
         self.similarity_path = Path(similarity_path)
         self.nouns_path = Path(nouns_path)
 
-        print(f"[WordGameEngine] Initializing with:")
         print(f"[WordGameEngine]   similarity_path: {self.similarity_path}")
         print(f"[WordGameEngine]   nouns_path: {self.nouns_path}")
-        print(f"[WordGameEngine]   Files exist: similarity={self.similarity_path.exists()}, nouns={self.nouns_path.exists()}")
+        print(
+            f"[WordGameEngine]   Files exist: similarity={self.similarity_path.exists()}, nouns={self.nouns_path.exists()}"
+        )
 
         if not self.similarity_path.exists():
-            raise FileNotFoundError(f"similarity file not found: {self.similarity_path}")
+            raise FileNotFoundError(
+                f"similarity file not found: {self.similarity_path}"
+            )
         if not self.nouns_path.exists():
             raise FileNotFoundError(f"nouns file not found: {self.nouns_path}")
 
@@ -61,9 +65,11 @@ class WordGameEngine:
         print(f"[WordGameEngine] Loaded {len(self.vocab)} vocabulary words")
         if len(self.vocab) > 0:
             print(f"[WordGameEngine] First few words: {self.vocab[:10]}")
-        
+
         self.offsets: Dict[str, int] = build_line_index(str(self.similarity_path))
-        print(f"[WordGameEngine] Built index for {len(self.offsets)} words in similarity file")
+        print(
+            f"[WordGameEngine] Built index for {len(self.offsets)} words in similarity file"
+        )
 
         vocab_in_similarity = set(self.offsets.keys())
         if not vocab_in_similarity:
@@ -76,33 +82,37 @@ class WordGameEngine:
         self.target_total: int = 0
 
         self.set_target(target_word)
-        print(f"[WordGameEngine] Initialized successfully with target: {self.target_word}")
+        print(
+            f"[WordGameEngine] Initialized successfully with target: {self.target_word}"
+        )
 
     def set_target(self, target_word: Optional[str] = None) -> str:
-    available = list(self.offsets.keys())
+        available = list(self.offsets.keys())
 
-    # If a specific target is requested, use it and validate once
-    if target_word is not None:
-        target_word = target_word.strip().lower()
-        if target_word not in self.offsets:
-            raise ValueError(f"Requested target not in similarity data: {target_word}")
-        candidates = [target_word]
-    else:
-        candidates = available
+        # If a specific target is requested, use it and validate once
+        if target_word is not None:
+            target_word = target_word.strip().lower()
+            if target_word not in self.offsets:
+                raise ValueError(
+                    f"Requested target not in similarity data: {target_word}"
+                )
+            candidates = [target_word]
+        else:
+            candidates = available
 
-    for _ in range(len(candidates) * 3):  # some upper bound on attempts
-        chosen = random.choice(candidates)
-        offset = self.offsets[chosen]
-        sims = read_similarity_row(str(self.similarity_path), offset)
+        for _ in range(len(candidates) * 3):  # some upper bound on attempts
+            chosen = random.choice(candidates)
+            offset = self.offsets[chosen]
+            sims = read_similarity_row(str(self.similarity_path), offset)
 
-        if sims:  # only accept targets with non-empty similarity list
-            self.target_word = chosen
-            self.target_similarity_list = sims
-            self.target_total = len(sims) + 1  # +1 for self
-            self.target_pos_map = {w: idx for idx, (w, _) in enumerate(sims)}
-            return self.target_word
+            if sims:  # only accept targets with non-empty similarity list
+                self.target_word = chosen
+                self.target_similarity_list = sims
+                self.target_total = len(sims) + 1  # +1 for self
+                self.target_pos_map = {w: idx for idx, (w, _) in enumerate(sims)}
+                return self.target_word
 
-    raise RuntimeError("Could not find a target with a non-empty similarity list.")
+        raise RuntimeError("Could not find a target with a non-empty similarity list.")
 
     def get_target(self) -> str:
         return self.target_word
@@ -175,7 +185,7 @@ def _play_cli():
 
         logging.info(
             f"Guess: '{result['guess']}' | "
-            f"rank #{result['rank']}/{result['total']-1} | "
+            f"rank #{result['rank']}/{result['total'] - 1} | "
             f"sim={result['similarity']:.4f} "
             f"({result['percentile']:.1f} percentile) — {result['hotness']}"
         )

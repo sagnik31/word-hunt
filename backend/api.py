@@ -14,12 +14,13 @@ Run locally:
 """
 
 import traceback
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.game import WordGameEngine
 from backend.config import CORS_ORIGINS
-from backend.routes import health, guess, hint, quit
+from backend.game import WordGameEngine
+from backend.routes import guess, health, hint, quit
 
 app = FastAPI(
     title="Word Hot-Cold Game API",

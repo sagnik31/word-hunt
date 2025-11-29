@@ -1,4 +1,5 @@
-from typing import List, Dict, Tuple
+from typing import Dict, List, Tuple
+
 
 def load_vocab(path: str) -> List[str]:
     with open(path, "r", encoding="utf-8") as fh:

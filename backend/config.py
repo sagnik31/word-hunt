@@ -23,6 +23,7 @@ print(f"[config] Nouns file exists: {NOUNS_PATH.exists()}")
 CORS_ORIGINS = [
     "https://sagnik31.github.io",
     "https://sagnik31.github.io/word-hunt",
+    "https://sagnik31.github.io/word-hunt/frontend",
     "http://localhost:8000",
     "http://127.0.0.1:8000",
     "http://localhost:5500",

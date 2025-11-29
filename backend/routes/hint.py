@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends
-from backend.schemas import HintResponse
-from backend.game import WordGameEngine
+
 from backend.dependencies import get_engine
+from backend.game import WordGameEngine
+from backend.schemas import HintResponse
 
 router = APIRouter()
 

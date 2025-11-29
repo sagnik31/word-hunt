@@ -1,6 +1,8 @@
 import random
 from typing import Dict, List, Tuple
+
 from backend.utils.scoring import describe_hotness
+
 
 def get_hint(
     target_similarity_list: List[Tuple[str, float]],

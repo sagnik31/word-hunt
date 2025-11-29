@@ -11,10 +11,11 @@ Outputs:
   - missing.txt
 """
 
-import sys
-import numpy as np
 import logging
+import sys
 from pathlib import Path
+
+import numpy as np
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 

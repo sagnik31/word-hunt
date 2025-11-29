@@ -13,10 +13,11 @@ The "other" words are sorted descending by cosine similarity
 and do NOT include the word itself.
 """
 
-import sys
-import numpy as np
 import logging
+import sys
 from pathlib import Path
+
+import numpy as np
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 

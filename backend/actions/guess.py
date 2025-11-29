@@ -1,5 +1,7 @@
-from typing import Dict, Optional, List, Tuple, Set
+from typing import Dict, List, Optional, Set, Tuple
+
 from backend.utils.scoring import describe_hotness
+
 
 def make_guess(
     guess_word: str,
