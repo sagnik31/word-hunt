@@ -13,6 +13,7 @@ Run locally:
   uvicorn api:app --host 0.0.0.0 --port 8000
 """
 
+import traceback
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -45,10 +46,15 @@ app.include_router(quit.router)
 @app.on_event("startup")
 def startup_event() -> None:
     try:
+        print("[startup] Initializing WordGameEngine...")
         app.state.engine = WordGameEngine()
-    except Exception as e:  # noqa: BLE001
+        print("[startup] WordGameEngine initialized successfully!")
+        print(f"[startup] Target word set to: {app.state.engine.get_target()}")
+    except Exception as e:
         app.state.engine = None
         print(f"[startup] Failed to initialize WordGameEngine: {e}")
+        print(f"[startup] Full traceback:")
+        traceback.print_exc()
 
 
 @app.get("/")
