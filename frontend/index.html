@@ -20,7 +20,7 @@
       <form id="guess-form" autocomplete="off">
         <label for="guess-input">Your guess:</label>
 
-        <!-- Row 1: input + Guess (unchanged) -->
+        <!-- Row 1: input + Guess -->
         <div class="input-row">
           <input
             type="text"
@@ -54,6 +54,13 @@
         <h2>Result</h2>
         <p id="result-text"></p>
         <p id="score-text" class="score-text"></p>
+        <button
+          type="button"
+          id="play-again-button"
+          class="play-again-button hidden"
+        >
+          Play Again
+        </button>
       </section>
 
       <section id="history" class="history hidden">

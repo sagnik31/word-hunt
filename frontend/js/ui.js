@@ -9,7 +9,8 @@ export class GameUI {
         this.inputEl = document.getElementById("guess-input");
         this.resultSection = document.getElementById("result");
         this.resultText = document.getElementById("result-text");
-        this.scoreText = document.getElementById("score-text"); // <-- NEW
+        this.scoreText = document.getElementById("score-text");
+        this.playAgainButton = document.getElementById("play-again-button");
         this.historySection = document.getElementById("history");
         this.historyList = document.getElementById("history-list");
         this.guessButton = document.getElementById("guess-button");
@@ -22,6 +23,9 @@ export class GameUI {
         this.similarWordButton.addEventListener("click", () => this.handleSimilarWordClick());
         this.hintButton.addEventListener("click", () => this.handleHintClick());
         this.quitButton.addEventListener("click", () => this.handleQuitClick());
+        if (this.playAgainButton) {
+            this.playAgainButton.addEventListener("click", () => this.handlePlayAgainClick());
+        }
     }
 
     setStatus(message, type = "info") {
@@ -49,7 +53,7 @@ export class GameUI {
         this.resultSection.classList.remove("hidden");
         this.resultText.className = "";
         if (this.scoreText) {
-            this.scoreText.textContent = ""; // clear old score unless explicitly set
+            this.scoreText.textContent = "";
         }
 
         if (!result.valid) {
@@ -69,9 +73,8 @@ export class GameUI {
         }
 
         const { guess, rank, total, similarity, percentile, hotness } = result;
-        this.resultText.textContent = `Guess "${guess}": rank #${rank}/${total - 1}, similarity=${similarity.toFixed(
-            4
-        )} (${percentile.toFixed(1)} percentile) — ${hotness}`;
+        this.resultText.textContent = `Guess "${guess}": rank #${rank}/${total - 1
+            }, similarity=${similarity.toFixed(4)} (${percentile.toFixed(1)} percentile) — ${hotness}`;
 
         this.applyHotnessColor(hotness);
     }
@@ -155,7 +158,7 @@ export class GameUI {
             this.resultSection.classList.remove("hidden");
             this.resultText.className = "";
             if (this.scoreText) {
-                this.scoreText.textContent = ""; // don't show old score when viewing hints
+                this.scoreText.textContent = "";
             }
             this.resultText.textContent = `💡 Similar Word: try "${similarWord.word}" — rank #${similarWord.rank}/${similarWord.total - 1
                 }, similarity=${similarWord.similarity.toFixed(4)} (${similarWord.percentile.toFixed(
@@ -182,7 +185,7 @@ export class GameUI {
             this.resultSection.classList.remove("hidden");
             this.resultText.className = "";
             if (this.scoreText) {
-                this.scoreText.textContent = ""; // don't show old score with new hint
+                this.scoreText.textContent = "";
             }
             this.resultText.textContent = `🧠 Hint: try "${hint.word}" — rank #${hint.rank}/${hint.total - 1
                 }, similarity=${hint.similarity.toFixed(4)} (${hint.percentile.toFixed(
@@ -218,6 +221,7 @@ export class GameUI {
             }
 
             this.addToHistory({ ...data, type: "quit" });
+            this.showPlayAgainButton();
         } catch (err) {
             console.error("Quit request failed:", err);
             this.showError("Error quitting the game. Please try again or reload the page.");
@@ -225,10 +229,42 @@ export class GameUI {
         }
     }
 
+    handlePlayAgainClick() {
+        // Frontend-only reset. Backend target has already been reset on
+        // correct/quit via the API layer.
+        this.gameOver = false;
+        this.enableControls();
+        this.inputEl.disabled = false;
+        this.inputEl.value = "";
+        this.inputEl.focus();
+
+        // Clear current result display but keep history
+        this.resultText.textContent = "";
+        this.resultText.className = "";
+        if (this.scoreText) {
+            this.scoreText.textContent = "";
+        }
+        this.resultSection.classList.add("hidden");
+
+        // Hide the Play Again button
+        if (this.playAgainButton) {
+            this.playAgainButton.classList.add("hidden");
+        }
+
+        this.setStatus("New round started. Make a guess!", "ok");
+    }
+
     endGame() {
         this.gameOver = true;
         this.disableControls();
         this.inputEl.disabled = true;
+        this.showPlayAgainButton();
+    }
+
+    showPlayAgainButton() {
+        if (this.playAgainButton) {
+            this.playAgainButton.classList.remove("hidden");
+        }
     }
 
     disableControls() {
@@ -250,7 +286,7 @@ export class GameUI {
         this.resultText.textContent = msg;
         this.resultText.className = "result-text-error";
         if (this.scoreText) {
-            this.scoreText.textContent = ""; // clear any old score on error
+            this.scoreText.textContent = "";
         }
     }
 }
