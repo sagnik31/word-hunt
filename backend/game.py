@@ -1,5 +1,6 @@
 import logging
 import random
+import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -60,9 +61,14 @@ class WordGameEngine:
         self.target_pos_map: Dict[str, int] = {}
         self.target_total: int = 0
 
-        # Game state: best rank across guesses + hints, and number of hints
+        # Gameplay state
         self.best_rank_overall: Optional[int] = None
+
+        # Scoring-related state
+        self.start_time: float = time.time()
         self.hint_count: int = 0
+        self.similar_click_count: int = 0
+        self.best_percentile: float = 0.0
 
         self.set_target(target_word)
         print(
@@ -94,9 +100,12 @@ class WordGameEngine:
                 self.target_total = len(sims) + 1  # +1 for self
                 self.target_pos_map = {w: idx for idx, (w, _) in enumerate(sims)}
 
-                # Reset game state when changing target
+                # Reset gameplay + scoring state
                 self.best_rank_overall = None
                 self.hint_count = 0
+                self.similar_click_count = 0
+                self.best_percentile = 0.0
+                self.start_time = time.time()
 
                 return self.target_word
 
@@ -106,12 +115,9 @@ class WordGameEngine:
         return self.target_word
 
     def get_answer(self) -> str:
-        """
-        Return the current target word (for quit endpoint / debugging).
-        """
         return self.target_word
 
-    # --- New helper state methods ---------------------------------------
+    # --- State update helpers -------------------------------------------
 
     def _update_best_rank(self, rank: int) -> None:
         if rank is None:
@@ -121,21 +127,24 @@ class WordGameEngine:
         else:
             self.best_rank_overall = min(self.best_rank_overall, rank)
 
+    def _update_percentile(self, percentile: Optional[float]) -> None:
+        if percentile is None:
+            return
+        if percentile > self.best_percentile:
+            self.best_percentile = percentile
+
     def _determine_hint_strength(self) -> str:
         """
         First 3 hints are 'soft', subsequent ones are 'strong'.
+        (Scoring V1 does not use this, but we keep it for gameplay.)
         """
         if self.hint_count < 3:
             return "soft"
         return "strong"
 
-    # --- Hint / similar word endpoints ----------------------------------
+    # --- Similar Word ---------------------------------------------------
 
     def get_similar_word(self) -> Dict[str, object]:
-        """
-        Backend decides whether the hint is soft or strong based on how many
-        hints have already been given.
-        """
         strength = self._determine_hint_strength()
         hint = get_similar_word(
             self.target_similarity_list,
@@ -143,28 +152,25 @@ class WordGameEngine:
             self.best_rank_overall,
             strength,
         )
-
-        # Update state
-        self.hint_count += 1
+        self.similar_click_count += 1
         self._update_best_rank(hint.get("rank"))
-
+        self._update_percentile(hint.get("percentile"))
         return hint
 
+    # --- Text-based Hint ------------------------------------------------
+
     def get_hint(self) -> Dict[str, object]:
-       """
-        Backend decides whether the hint is soft or strong based on how many
-        hints have already been given.
-        """
-       strength = self._determine_hint_strength()
-       hint = get_hint(
+        strength = self._determine_hint_strength()
+        hint = get_hint(
             self.target_similarity_list,
             self.target_total,
             self.best_rank_overall,
             strength,
         )
-       self.hint_count += 1
-       self._update_best_rank(hint.get("rank"))
-       return hint
+        self.hint_count += 1
+        self._update_best_rank(hint.get("rank"))
+        self._update_percentile(hint.get("percentile"))
+        return hint
 
     # --- Guess handling -------------------------------------------------
 
@@ -178,9 +184,7 @@ class WordGameEngine:
             self.vocab_set,
             self.offsets,
         )
-
-        # Update best_rank_overall based on guess rank
-        if result.get("valid") and result.get("rank") is not None:
-            self._update_best_rank(result["rank"])
-
+        if result.get("valid"):
+            self._update_best_rank(result.get("rank"))
+            self._update_percentile(result.get("percentile"))
         return result

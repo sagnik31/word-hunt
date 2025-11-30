@@ -9,6 +9,7 @@ export class GameUI {
         this.inputEl = document.getElementById("guess-input");
         this.resultSection = document.getElementById("result");
         this.resultText = document.getElementById("result-text");
+        this.scoreText = document.getElementById("score-text"); // <-- NEW
         this.historySection = document.getElementById("history");
         this.historyList = document.getElementById("history-list");
         this.guessButton = document.getElementById("guess-button");
@@ -47,6 +48,9 @@ export class GameUI {
     renderResult(result) {
         this.resultSection.classList.remove("hidden");
         this.resultText.className = "";
+        if (this.scoreText) {
+            this.scoreText.textContent = ""; // clear old score unless explicitly set
+        }
 
         if (!result.valid) {
             this.resultText.textContent = `Invalid guess: ${result.error}`;
@@ -57,6 +61,10 @@ export class GameUI {
         if (result.is_correct) {
             this.resultText.textContent = `🎉 Correct! "${result.guess}" is the target word.`;
             this.resultText.classList.add("result-text-success");
+
+            if (this.scoreText && typeof result.score === "number") {
+                this.scoreText.textContent = `Final score: ${result.score} points`;
+            }
             return;
         }
 
@@ -89,11 +97,19 @@ export class GameUI {
             li.textContent = `🧠 Hint: try "${result.word}" — rank #${result.rank}/${result.total - 1
                 }, sim=${result.similarity.toFixed(3)}, ${result.hotness}`;
         } else if (result.type === "quit") {
-            li.textContent = `🚪 You quit. The answer was "${result.answer}".`;
+            if (typeof result.score === "number") {
+                li.textContent = `🚪 You quit. The answer was "${result.answer}". Final score: ${result.score} points.`;
+            } else {
+                li.textContent = `🚪 You quit. The answer was "${result.answer}".`;
+            }
         } else if (!result.valid) {
             li.textContent = `❌ "${result.guess}" — invalid (${result.error})`;
         } else if (result.is_correct) {
-            li.textContent = `✅ "${result.guess}" — CORRECT!`;
+            if (typeof result.score === "number") {
+                li.textContent = `✅ "${result.guess}" — CORRECT! Final score: ${result.score} points.`;
+            } else {
+                li.textContent = `✅ "${result.guess}" — CORRECT!`;
+            }
         } else {
             li.textContent = `⭐ "${result.guess}" — rank #${result.rank}/${result.total - 1
                 }, sim=${result.similarity.toFixed(3)}, ${result.hotness}`;
@@ -138,6 +154,9 @@ export class GameUI {
 
             this.resultSection.classList.remove("hidden");
             this.resultText.className = "";
+            if (this.scoreText) {
+                this.scoreText.textContent = ""; // don't show old score when viewing hints
+            }
             this.resultText.textContent = `💡 Similar Word: try "${similarWord.word}" — rank #${similarWord.rank}/${similarWord.total - 1
                 }, similarity=${similarWord.similarity.toFixed(4)} (${similarWord.percentile.toFixed(
                     1
@@ -162,6 +181,9 @@ export class GameUI {
 
             this.resultSection.classList.remove("hidden");
             this.resultText.className = "";
+            if (this.scoreText) {
+                this.scoreText.textContent = ""; // don't show old score with new hint
+            }
             this.resultText.textContent = `🧠 Hint: try "${hint.word}" — rank #${hint.rank}/${hint.total - 1
                 }, similarity=${hint.similarity.toFixed(4)} (${hint.percentile.toFixed(
                     1
@@ -190,6 +212,10 @@ export class GameUI {
             this.resultSection.classList.remove("hidden");
             this.resultText.className = "result-text-error";
             this.resultText.textContent = `🚪 You quit. The answer was "${data.answer}".`;
+
+            if (this.scoreText && typeof data.score === "number") {
+                this.scoreText.textContent = `Final score: ${data.score} points`;
+            }
 
             this.addToHistory({ ...data, type: "quit" });
         } catch (err) {
@@ -223,5 +249,8 @@ export class GameUI {
         this.resultSection.classList.remove("hidden");
         this.resultText.textContent = msg;
         this.resultText.className = "result-text-error";
+        if (this.scoreText) {
+            this.scoreText.textContent = ""; // clear any old score on error
+        }
     }
 }

@@ -4,6 +4,7 @@ from pydantic import BaseModel
 
 HintStrength = Literal["soft", "strong"]
 
+
 class GuessRequest(BaseModel):
     word: str
 
@@ -18,6 +19,7 @@ class GuessResponse(BaseModel):
     similarity: Optional[float] = None
     percentile: Optional[float] = None
     hotness: Optional[str] = None
+    score: Optional[int] = None  # <-- Added for scoring output
 
 
 class HealthResponse(BaseModel):
@@ -45,3 +47,4 @@ class HintResponse(BaseModel):
 
 class QuitResponse(BaseModel):
     answer: str
+    score: Optional[int] = None  # <-- Added for scoring on quit

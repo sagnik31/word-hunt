@@ -158,3 +158,11 @@ button:disabled {
   max-width: 50%;
   text-align: center;
 }
+
+/* Final score text */
+.score-text {
+  margin-top: 0.4rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #fbbf24; /* amber-ish, stands out but fits theme */
+}
