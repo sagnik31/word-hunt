@@ -1,0 +1,9 @@
+# Offline data scripts in backend/scripts/ (not needed to run the server)
+numpy
+requests
+spacy
+nltk
+wordfreq
+better_profanity
+tqdm
+# build_vocabulary.py also needs: python -m spacy download en_core_web_sm

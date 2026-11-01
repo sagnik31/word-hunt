@@ -15,7 +15,7 @@ def test_read_root(client):
     assert response.status_code == 200
     assert response.json() == {
         "message": "Word Hot-Cold Game API",
-        "endpoints": ["/health", "/guess", "/similar_word", "/quit", "/docs"],
+        "endpoints": ["/health", "/guess", "/similar_word", "/hint", "/quit", "/docs"],
     }
 
 def test_health_check(client):

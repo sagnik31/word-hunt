@@ -7,10 +7,11 @@ FastAPI app exposing an HTTP API:
   - GET  /health
   - POST /guess
   - GET  /similar_word    (suggest a hot word)
-  - POST /quit    (reveal the answer)
+  - GET  /hint            (suggest a hot word)
+  - POST /quit            (reveal the answer)
 
-Run locally:
-  uvicorn api:app --host 0.0.0.0 --port 8000
+Run locally (from the repo root):
+  uvicorn backend.api:app --host 0.0.0.0 --port 8000
 """
 
 import traceback
@@ -70,5 +71,5 @@ app.include_router(quit.router)
 def root():
     return {
         "message": "Word Hot-Cold Game API",
-        "endpoints": ["/health", "/guess", "/similar_word", "/quit", "/docs"],
+        "endpoints": ["/health", "/guess", "/similar_word", "/hint", "/quit", "/docs"],
     }

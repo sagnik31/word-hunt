@@ -1,4 +1,4 @@
 .vscode/
 __pycache__/
 */glove.6B.300d.txt
-.github/
+.github/copilot-instructions.md

@@ -80,11 +80,9 @@ export class GameUI {
     }
 
     applyHotnessColor(hotness) {
-        if (["Boiling", "Very hot", "Hot"].includes(hotness)) {
+        if (["Boiling", "Very hot", "Hot", "Warm"].includes(hotness)) {
             this.resultText.classList.add("result-text-warm");
-        } else if (["Warm", "Cool"].includes(hotness)) {
-            this.resultText.classList.add("result-text-cold");
-        } else if (["Cold", "Freezing"].includes(hotness)) {
+        } else if (["Cool", "Cold", "Freezing"].includes(hotness)) {
             this.resultText.classList.add("result-text-cold");
         }
     }
