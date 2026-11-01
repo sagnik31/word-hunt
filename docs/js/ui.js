@@ -1,3 +1,8 @@
+const SUGGESTION_LABELS = {
+    "similar word": "💡 Similar Word",
+    hint: "🧠 Hint",
+};
+
 export class GameUI {
     constructor(apiClient) {
         this.api = apiClient;
@@ -91,11 +96,8 @@ export class GameUI {
         this.historySection.classList.remove("hidden");
         const li = document.createElement("li");
 
-        if (result.type === "similar word") {
-            li.textContent = `💡 Similar Word: try "${result.word}" — rank #${result.rank}/${result.total - 1
-                }, sim=${result.similarity.toFixed(3)}, ${result.hotness}`;
-        } else if (result.type === "hint") {
-            li.textContent = `🧠 Hint: try "${result.word}" — rank #${result.rank}/${result.total - 1
+        if (result.type in SUGGESTION_LABELS) {
+            li.textContent = `${SUGGESTION_LABELS[result.type]}: try "${result.word}" — rank #${result.rank}/${result.total - 1
                 }, sim=${result.similarity.toFixed(3)}, ${result.hotness}`;
         } else if (result.type === "quit") {
             if (typeof result.score === "number") {
@@ -146,57 +148,38 @@ export class GameUI {
         }
     }
 
-    async handleSimilarWordClick() {
-        if (this.gameOver) return;
-
-        this.similarWordButton.disabled = true;
-        try {
-            const similarWord = await this.api.getSimilarWord();
-
-            this.resultSection.classList.remove("hidden");
-            this.resultText.className = "";
-            if (this.scoreText) {
-                this.scoreText.textContent = "";
-            }
-            this.resultText.textContent = `💡 Similar Word: try "${similarWord.word}" — rank #${similarWord.rank}/${similarWord.total - 1
-                }, similarity=${similarWord.similarity.toFixed(4)} (${similarWord.percentile.toFixed(
-                    1
-                )} percentile) — ${similarWord.hotness}`;
-
-            this.applyHotnessColor(similarWord.hotness);
-            this.addToHistory({ ...similarWord, type: "similar word" });
-        } catch (err) {
-            console.error("Similar Word request failed:", err);
-            this.showError("Error fetching a similar word from the server. Please try again.");
-        } finally {
-            this.similarWordButton.disabled = false;
-        }
+    handleSimilarWordClick() {
+        return this.showSuggestion("similar word", this.similarWordButton, () => this.api.getSimilarWord());
     }
 
-    async handleHintClick() {
+    handleHintClick() {
+        return this.showSuggestion("hint", this.hintButton, () => this.api.getHint());
+    }
+
+    // Shared by Similar Word and Hint: fetch a suggested word and show it.
+    async showSuggestion(type, button, fetchSuggestion) {
         if (this.gameOver) return;
 
-        this.hintButton.disabled = true;
+        const label = SUGGESTION_LABELS[type];
+        button.disabled = true;
         try {
-            const hint = await this.api.getHint();
+            const s = await fetchSuggestion();
 
             this.resultSection.classList.remove("hidden");
             this.resultText.className = "";
             if (this.scoreText) {
                 this.scoreText.textContent = "";
             }
-            this.resultText.textContent = `🧠 Hint: try "${hint.word}" — rank #${hint.rank}/${hint.total - 1
-                }, similarity=${hint.similarity.toFixed(4)} (${hint.percentile.toFixed(
-                    1
-                )} percentile) — ${hint.hotness}`;
+            this.resultText.textContent = `${label}: try "${s.word}" — rank #${s.rank}/${s.total - 1
+                }, similarity=${s.similarity.toFixed(4)} (${s.percentile.toFixed(1)} percentile) — ${s.hotness}`;
 
-            this.applyHotnessColor(hint.hotness);
-            this.addToHistory({ ...hint, type: "hint" });
+            this.applyHotnessColor(s.hotness);
+            this.addToHistory({ ...s, type });
         } catch (err) {
-            console.error("Hint request failed:", err);
-            this.showError("Error fetching a hint from the server. Please try again.");
+            console.error(`${type} request failed:`, err);
+            this.showError(`Error fetching a ${type} from the server. Please try again.`);
         } finally {
-            this.hintButton.disabled = false;
+            button.disabled = false;
         }
     }
 

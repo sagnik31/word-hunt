@@ -5,7 +5,6 @@ from typing import Dict, List, Optional, Tuple
 
 from backend.actions.guess import make_guess
 from backend.actions.similar_word import get_similar_word
-from backend.actions.hint import get_hint
 from backend.config import NOUNS_PATH, SIMILARITY_PATH
 from backend.utils.loaders import build_line_index, load_vocab, read_similarity_row
 
@@ -136,9 +135,11 @@ class WordGameEngine:
             return "soft"
         return "strong"
 
-    # --- Similar Word ---------------------------------------------------
+    # --- Similar Word / Hint --------------------------------------------
+    # Both reveal a word ranked better than the player's best so far;
+    # they differ only in which counter they bump.
 
-    def get_similar_word(self) -> Dict[str, object]:
+    def _suggest_word(self) -> Dict[str, object]:
         strength = self._determine_hint_strength()
         hint = get_similar_word(
             self.target_similarity_list,
@@ -146,24 +147,18 @@ class WordGameEngine:
             self.best_rank_overall,
             strength,
         )
-        self.similar_click_count += 1
         self._update_best_rank(hint.get("rank"))
         self._update_percentile(hint.get("percentile"))
         return hint
 
-    # --- Text-based Hint ------------------------------------------------
+    def get_similar_word(self) -> Dict[str, object]:
+        hint = self._suggest_word()
+        self.similar_click_count += 1
+        return hint
 
     def get_hint(self) -> Dict[str, object]:
-        strength = self._determine_hint_strength()
-        hint = get_hint(
-            self.target_similarity_list,
-            self.target_total,
-            self.best_rank_overall,
-            strength,
-        )
+        hint = self._suggest_word()
         self.hint_count += 1
-        self._update_best_rank(hint.get("rank"))
-        self._update_percentile(hint.get("percentile"))
         return hint
 
     # --- Guess handling -------------------------------------------------
