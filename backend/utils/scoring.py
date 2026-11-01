@@ -1,6 +1,5 @@
 # scoring.py — Updated percentile-based hotness
 
-from typing import Optional
 
 def compute_percentile(rank: int, total: int) -> float:
     """

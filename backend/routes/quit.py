@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends
 from backend.dependencies import get_engine
 from backend.game import WordGameEngine
 from backend.schemas import QuitResponse
-from backend.scoring import calculate_final_score  # <-- NEW IMPORT
+from backend.scoring import calculate_final_score
 
 router = APIRouter()
 
@@ -20,12 +20,12 @@ def quit_endpoint(
         engine.best_percentile,
     )
 
-    answer = engine.get_answer()
+    answer = engine.get_target()
 
     # Reset the game for next round
     engine.set_target()
 
     return QuitResponse(
         answer=answer,
-        score=score,  # <-- ADDED
+        score=score,
     )

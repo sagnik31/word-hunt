@@ -7,7 +7,7 @@ import requests
 OLLAMA_URL = "http://localhost:11434/api/generate"
 MODEL_NAME = "qwen3:4b-instruct-2507-q8_0"
 
-INPUT_FILE = Path("data/first_100.txt")
+INPUT_FILE = Path("data/similarity.txt")
 OUTPUT_FILE = Path("data/big_hints.json")
 
 

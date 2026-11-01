@@ -1,4 +1,3 @@
-import logging
 import random
 import time
 from pathlib import Path
@@ -6,11 +5,9 @@ from typing import Dict, List, Optional, Tuple
 
 from backend.actions.guess import make_guess
 from backend.actions.similar_word import get_similar_word
-from backend.actions.hint import get_hint  # if you still use this elsewhere
+from backend.actions.hint import get_hint
 from backend.config import NOUNS_PATH, SIMILARITY_PATH
 from backend.utils.loaders import build_line_index, load_vocab, read_similarity_row
-
-logging.basicConfig(level=logging.INFO, format="%(message)s")
 
 
 class WordGameEngine:
@@ -112,9 +109,6 @@ class WordGameEngine:
         raise RuntimeError("Could not find a target with a non-empty similarity list.")
 
     def get_target(self) -> str:
-        return self.target_word
-
-    def get_answer(self) -> str:
         return self.target_word
 
     # --- State update helpers -------------------------------------------

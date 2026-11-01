@@ -1,8 +1,6 @@
-from typing import Literal, Optional
+from typing import Optional
 
 from pydantic import BaseModel
-
-HintStrength = Literal["soft", "strong"]
 
 
 class GuessRequest(BaseModel):
@@ -19,7 +17,7 @@ class GuessResponse(BaseModel):
     similarity: Optional[float] = None
     percentile: Optional[float] = None
     hotness: Optional[str] = None
-    score: Optional[int] = None  # <-- Added for scoring output
+    score: Optional[int] = None
 
 
 class HealthResponse(BaseModel):
@@ -47,4 +45,4 @@ class HintResponse(BaseModel):
 
 class QuitResponse(BaseModel):
     answer: str
-    score: Optional[int] = None  # <-- Added for scoring on quit
+    score: Optional[int] = None

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends
 from backend.dependencies import get_engine
 from backend.game import WordGameEngine
 from backend.schemas import GuessRequest, GuessResponse
-from backend.scoring import calculate_final_score  # <-- NEW IMPORT
+from backend.scoring import calculate_final_score
 
 router = APIRouter()
 
@@ -41,6 +41,6 @@ def make_guess_endpoint(
             "similarity": result.get("similarity"),
             "percentile": result.get("percentile"),
             "hotness": result.get("hotness"),
-            "score": score,  # <-- ADDED
+            "score": score,
         }
     )
