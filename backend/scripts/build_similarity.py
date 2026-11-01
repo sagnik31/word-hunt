@@ -48,10 +48,8 @@ def main():
 
     with open(OUT_PATH, "w", encoding="utf-8") as fh:
         for i, w in enumerate(words):
-            row = sim[i].copy()
-            row[i] = -2.0  # exclude itself
-            idx = np.argsort(-row)
-            pairs = [f"{words[j]}:{sim[i][j]:.6f}" for j in idx]
+            idx = np.argsort(-sim[i])
+            pairs = [f"{words[j]}:{sim[i][j]:.6f}" for j in idx if j != i]
             fh.write(f"{w}\t{','.join(pairs)}\n")
 
     logging.info(f"Saved similarity data to {OUT_PATH}")

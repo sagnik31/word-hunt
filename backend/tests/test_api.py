@@ -32,6 +32,13 @@ def test_make_guess_invalid(client):
     assert data["valid"] is False
     assert data["error"] == "Empty guess."
 
+@pytest.mark.parametrize("path", ["/hint", "/similar_word"])
+def test_help_endpoints_require_post(client, path):
+    assert client.get(path).status_code == 405
+    response = client.post(path)
+    assert response.status_code == 200
+    assert response.json()["rank"] >= 2
+
 def test_make_guess_valid(client):
     # Assuming "dog" is in the vocabulary
     response = client.post("/guess", json={"word": "dog"})

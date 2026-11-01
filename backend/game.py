@@ -61,7 +61,7 @@ class WordGameEngine:
         self.best_rank_overall: Optional[int] = None
 
         # Scoring-related state
-        self.start_time: float = time.time()
+        self.start_time: Optional[float] = None
         self.hint_count: int = 0
         self.similar_click_count: int = 0
         self.best_percentile: float = 0.0
@@ -83,25 +83,37 @@ class WordGameEngine:
                 )
             candidates = [target_word]
         else:
-            candidates = available
+            # Don't repeat the word that was just played.
+            candidates = [w for w in available if w != self.target_word] or available
 
         for _ in range(len(candidates) * 3):  # some upper bound on attempts
             chosen = random.choice(candidates)
             offset = self.offsets[chosen]
             sims = read_similarity_row(str(self.similarity_path), offset)
 
-            if sims:  # only accept targets with non-empty similarity list
+            # The ranking must not contain the target itself or repeated
+            # words, or a hint could reveal the answer.
+            seen = {chosen}
+            neighbours: List[Tuple[str, float]] = []
+            for w, s in sims:
+                if w not in seen:
+                    seen.add(w)
+                    neighbours.append((w, s))
+
+            if neighbours:  # only accept targets with non-empty similarity list
                 self.target_word = chosen
-                self.target_similarity_list = sims
-                self.target_total = len(sims) + 1  # +1 for self
-                self.target_pos_map = {w: idx for idx, (w, _) in enumerate(sims)}
+                self.target_similarity_list = neighbours
+                self.target_total = len(neighbours) + 1  # +1 for self
+                self.target_pos_map = {
+                    w: idx for idx, (w, _) in enumerate(neighbours)
+                }
 
                 # Reset gameplay + scoring state
                 self.best_rank_overall = None
                 self.hint_count = 0
                 self.similar_click_count = 0
                 self.best_percentile = 0.0
-                self.start_time = time.time()
+                self.start_time = None  # starts on the first guess or help
 
                 return self.target_word
 
@@ -126,21 +138,26 @@ class WordGameEngine:
         if percentile > self.best_percentile:
             self.best_percentile = percentile
 
-    def _determine_hint_strength(self) -> str:
+    def _start_clock(self) -> None:
+        if self.start_time is None:
+            self.start_time = time.time()
+
+    @staticmethod
+    def _determine_hint_strength(times_used: int) -> str:
         """
-        First 3 hints are 'soft', subsequent ones are 'strong'.
-        (Scoring V1 does not use this, but we keep it for gameplay.)
+        The first 3 uses of a help feature are 'soft', later ones 'strong'.
         """
-        if self.hint_count < 3:
+        if times_used < 3:
             return "soft"
         return "strong"
 
     # --- Similar Word / Hint --------------------------------------------
     # Both reveal a word ranked better than the player's best so far;
-    # they differ only in which counter they bump.
+    # each tracks its own use count, which sets its strength.
 
-    def _suggest_word(self) -> Dict[str, object]:
-        strength = self._determine_hint_strength()
+    def _suggest_word(self, times_used: int) -> Dict[str, object]:
+        self._start_clock()
+        strength = self._determine_hint_strength(times_used)
         hint = get_similar_word(
             self.target_similarity_list,
             self.target_total,
@@ -152,18 +169,19 @@ class WordGameEngine:
         return hint
 
     def get_similar_word(self) -> Dict[str, object]:
-        hint = self._suggest_word()
+        hint = self._suggest_word(self.similar_click_count)
         self.similar_click_count += 1
         return hint
 
     def get_hint(self) -> Dict[str, object]:
-        hint = self._suggest_word()
+        hint = self._suggest_word(self.hint_count)
         self.hint_count += 1
         return hint
 
     # --- Guess handling -------------------------------------------------
 
     def make_guess(self, guess_word: str) -> Dict[str, Optional[object]]:
+        self._start_clock()
         result = make_guess(
             guess_word,
             self.target_word,

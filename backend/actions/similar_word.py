@@ -10,15 +10,16 @@ HintStrength = Literal["soft", "strong"]
 
 def _choose_hint_index(
     n_others: int,
-    best_rank_overall: Optional[int],
+    best_position: Optional[int],
     hint_strength: HintStrength
 ) -> int:
     """
-    Select a rank (index) that is better (lower) than best_rank_overall if possible.
+    Select an index whose 1-based neighbour position is better (lower) than
+    best_position if possible.
     Soft = modest improvement
     Strong = aggressive improvement
     """
-    if best_rank_overall is None or best_rank_overall > 100:
+    if best_position is None or best_position > 100:
         # Player still far — big window
         if hint_strength == "strong":
             low_rank, high_rank = 1, min(50, n_others)
@@ -28,7 +29,7 @@ def _choose_hint_index(
                 low_rank, high_rank = 1, min(20, n_others)
     else:
         # User already mid-close — give strictly better hint
-        best = min(best_rank_overall, n_others)
+        best = min(best_position, n_others)
         if best <= 1:
             low_rank, high_rank = 1, min(5, n_others)
         else:
@@ -63,10 +64,13 @@ def get_similar_word(
         raise RuntimeError("No similarity data for this target.")
 
     n_others = len(target_similarity_list)
-    idx = _choose_hint_index(n_others, best_rank_overall, hint_strength)
+    # Ranks count the target as #1, so neighbour index i has rank i + 2;
+    # the index chooser works in 1-based neighbour positions (rank - 1).
+    best_position = None if best_rank_overall is None else best_rank_overall - 1
+    idx = _choose_hint_index(n_others, best_position, hint_strength)
 
     word, sim = target_similarity_list[idx]
-    rank = idx + 1
+    rank = idx + 2
 
     percentile = compute_percentile(rank, target_total)
     hotness = describe_hotness(rank, target_total)

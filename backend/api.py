@@ -6,8 +6,8 @@ FastAPI app exposing an HTTP API:
 
   - GET  /health
   - POST /guess
-  - GET  /similar_word    (suggest a hot word)
-  - GET  /hint            (suggest a hot word)
+  - POST /similar_word    (suggest a hot word)
+  - POST /hint            (suggest a hot word)
   - POST /quit            (reveal the answer)
 
 Run locally (from the repo root):

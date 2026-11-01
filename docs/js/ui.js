@@ -78,7 +78,7 @@ export class GameUI {
         }
 
         const { guess, rank, total, similarity, percentile, hotness } = result;
-        this.resultText.textContent = `Guess "${guess}": rank #${rank}/${total - 1
+        this.resultText.textContent = `Guess "${guess}": rank #${rank}/${total
             }, similarity=${similarity.toFixed(4)} (${percentile.toFixed(1)} percentile) — ${hotness}`;
 
         this.applyHotnessColor(hotness);
@@ -97,7 +97,7 @@ export class GameUI {
         const li = document.createElement("li");
 
         if (result.type in SUGGESTION_LABELS) {
-            li.textContent = `${SUGGESTION_LABELS[result.type]}: try "${result.word}" — rank #${result.rank}/${result.total - 1
+            li.textContent = `${SUGGESTION_LABELS[result.type]}: try "${result.word}" — rank #${result.rank}/${result.total
                 }, sim=${result.similarity.toFixed(3)}, ${result.hotness}`;
         } else if (result.type === "quit") {
             if (typeof result.score === "number") {
@@ -114,7 +114,7 @@ export class GameUI {
                 li.textContent = `✅ "${result.guess}" — CORRECT!`;
             }
         } else {
-            li.textContent = `⭐ "${result.guess}" — rank #${result.rank}/${result.total - 1
+            li.textContent = `⭐ "${result.guess}" — rank #${result.rank}/${result.total
                 }, sim=${result.similarity.toFixed(3)}, ${result.hotness}`;
         }
 
@@ -142,9 +142,12 @@ export class GameUI {
             console.error("Guess request failed:", err);
             this.showError("Error communicating with the server. Please try again.");
         } finally {
-            this.guessButton.disabled = false;
             this.inputEl.value = "";
-            this.inputEl.focus();
+            // endGame() has already disabled everything if this guess won.
+            if (!this.gameOver) {
+                this.guessButton.disabled = false;
+                this.inputEl.focus();
+            }
         }
     }
 
@@ -170,7 +173,7 @@ export class GameUI {
             if (this.scoreText) {
                 this.scoreText.textContent = "";
             }
-            this.resultText.textContent = `${label}: try "${s.word}" — rank #${s.rank}/${s.total - 1
+            this.resultText.textContent = `${label}: try "${s.word}" — rank #${s.rank}/${s.total
                 }, similarity=${s.similarity.toFixed(4)} (${s.percentile.toFixed(1)} percentile) — ${s.hotness}`;
 
             this.applyHotnessColor(s.hotness);
@@ -179,7 +182,7 @@ export class GameUI {
             console.error(`${type} request failed:`, err);
             this.showError(`Error fetching a ${type} from the server. Please try again.`);
         } finally {
-            button.disabled = false;
+            if (!this.gameOver) button.disabled = false;
         }
     }
 

@@ -43,8 +43,8 @@ Hotness is based on rank percentile: Boiling (top 1%), Very hot (top 5%), Hot (t
 
   * `GET /health`
   * `POST /guess`
-  * `GET /similar_word`
-  * `GET /hint`
+  * `POST /similar_word`
+  * `POST /hint`
   * `POST /quit`
 
 ### Frontend → GitHub Pages

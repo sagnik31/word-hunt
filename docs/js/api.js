@@ -20,13 +20,13 @@ export class ApiClient {
     }
 
     async getSimilarWord() {
-        const res = await fetch(`${this.baseUrl}/similar_word`);
+        const res = await fetch(`${this.baseUrl}/similar_word`, { method: "POST" });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();
     }
 
     async getHint() {
-        const res = await fetch(`${this.baseUrl}/hint`);
+        const res = await fetch(`${this.baseUrl}/hint`, { method: "POST" });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();
     }

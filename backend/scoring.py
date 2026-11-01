@@ -15,8 +15,12 @@ Current rules (V1):
 - Help penalty:
     * Each hint:          -10 points
     * Each similar word:  -10 points
+- Time is measured from the first guess or help request, not from when
+  the word was picked.
 - Quit:
-    * Score = round(100 * best_percentile_reached)
+    * Score = round(best_percentile_reached / 2) minus the same help penalty
+    * Halving keeps quitting worth less than solving, and the help penalty
+      stops "take a hint, then quit" from paying off.
     * If no valid guesses (percentile <= 0 or None) → 0 points.
 - Final score is never negative.
 """
@@ -88,10 +92,11 @@ def quit_partial_score(best_percentile: Optional[float]) -> int:
     """
     Partial score when the user quits.
 
-    We use the best percentile achieved so far (0–100) and simply map:
-      score = round(best_percentile)
+    We use the best percentile achieved so far (0–100) and halve it:
+      score = round(best_percentile / 2)
 
-    i.e., if best_percentile is 72.3, the player gets 72 points.
+    i.e., if best_percentile is 72.3, the player gets 36 points (before the
+    help penalty, which calculate_final_score subtracts).
 
     If no meaningful progress was made (None or <= 0), return 0.
     """
@@ -99,12 +104,12 @@ def quit_partial_score(best_percentile: Optional[float]) -> int:
         return 0
 
     # best_percentile is already 0–100
-    return int(round(best_percentile))
+    return int(round(best_percentile / 2))
 
 
 def calculate_final_score(
     is_correct: bool,
-    start_time: float,
+    start_time: Optional[float],
     hint_count: int,
     similar_count: int,
     best_percentile: Optional[float],
@@ -117,8 +122,9 @@ def calculate_final_score(
     ----------
     is_correct : bool
         Whether the round ended with a correct guess (True) or a quit (False).
-    start_time : float
-        UNIX timestamp (time.time()) recorded when the round began.
+    start_time : Optional[float]
+        UNIX timestamp (time.time()) of the round's first guess or help
+        request; None if the player hasn't acted yet.
     hint_count : int
         Number of hints used in this round.
     similar_count : int
@@ -135,14 +141,15 @@ def calculate_final_score(
     int
         Final score for the round, clamped to a minimum of 0.
     """
-    # Quit case: use percentile-based partial score
+    # Quit case: use percentile-based partial score, minus help used
     if not is_correct:
         score = quit_partial_score(best_percentile)
+        score -= help_penalty(hint_count, similar_count)
         return max(score, 0)
 
     # Correct case: compute time + help penalties
     current_time = time.time() if now is None else now
-    elapsed = max(0.0, current_time - start_time)
+    elapsed = 0.0 if start_time is None else max(0.0, current_time - start_time)
 
     score = base_points(True)
     score -= time_penalty(elapsed)

@@ -35,7 +35,8 @@ def read_nouns(path: str):
         text = fh.read()
     tokens = text.split()  # splits on all whitespace
     nouns = [t.strip().lower() for t in tokens if t.strip()]
-    return nouns
+    # Drop repeats (keeping first-seen order) so each word gets one row.
+    return list(dict.fromkeys(nouns))
 
 
 def extract():

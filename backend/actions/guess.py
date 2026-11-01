@@ -59,26 +59,17 @@ def make_guess(
         )
         return base_response
 
-    # In-vocab, not equal to target: find its rank & similarity
-    if guess_norm in target_pos_map:
-        idx = target_pos_map[guess_norm]
-        rank = idx + 1
-        sim = target_similarity_list[idx][1]
-    else:
-        idx = None
-        sim = None
-        for j, (w, sc) in enumerate(target_similarity_list):
-            if w == guess_norm:
-                idx = j
-                sim = sc
-                break
-        if idx is None or sim is None:
-            base_response["error"] = (
-                "Internal error: guess not found in target similarity list."
-            )
-            base_response["valid"] = False
-            return base_response
-        rank = idx + 1
+    # In-vocab, not equal to target: find its rank & similarity.
+    # The target is rank 1, so its closest neighbour (index 0) is rank 2.
+    if guess_norm not in target_pos_map:
+        base_response["error"] = (
+            "Internal error: guess not found in target similarity list."
+        )
+        base_response["valid"] = False
+        return base_response
+    idx = target_pos_map[guess_norm]
+    rank = idx + 2
+    sim = target_similarity_list[idx][1]
 
     # Percentile & hotness are now rank-based
     percentile = compute_percentile(rank, target_total)
