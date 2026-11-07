@@ -1,6 +1,6 @@
 # Word Hunt
 
-A word-guessing game where the only clue is meaning. The server picks a secret noun; you guess words and are told how semantically close each guess is, measured by cosine similarity between GloVe word embeddings. Every guess is ranked against the full vocabulary of about 31,000 words, so you can feel your way from "Freezing" to "Boiling" until you land on the answer.
+A word-guessing game where the only clue is meaning. The server picks a secret noun; you guess words and are told how semantically close each guess is, measured by cosine similarity between GloVe word embeddings. Every guess is ranked against the full vocabulary of about 31,000 words, so you can feel your way from "Freezing" to "Boiling" until you land on the answer. The word lists come from the Brysbaert, Warriner & Kuperman (2014) concreteness ratings (see [How it works](#how-it-works)).
 
 **Play it:** [sagnik31.github.io/word-hunt](https://sagnik31.github.io/word-hunt/)
 
@@ -49,7 +49,16 @@ Offline:  concreteness ratings ──► build_word_lists.py ──► guess_wor
 Runtime:  embeddings.npz + word lists ──► FastAPI backend (Render) ◄── REST ──► Browser frontend (GitHub Pages)
 ```
 
-**Word lists.** [`backend/scripts/build_word_lists.py`](backend/scripts/build_word_lists.py) builds three files from the concreteness ratings dataset (see [Data sources](#data-sources)):
+**Word lists.** Both the guess list and the answer list are built from one source: **Brysbaert, Warriner & Kuperman (2014), *Concreteness ratings for 40 thousand generally known English word lemmas*** ([original data on OSF](https://osf.io/kj76e/), [CSV mirror on Hugging Face](https://huggingface.co/datasets/StephanAkkerman/concreteness-ratings)). It lists about 40,000 English words, each with:
+
+- **`Conc.M`:** how concrete people rated it, from 1 (abstract) to 5 (concrete).
+- **`Percent_known`:** the share of raters who knew the word.
+- **`SUBTLEX`:** how often it appears in film and TV subtitles.
+- **`Dom_Pos`:** its usual part of speech.
+
+The CSV isn't committed. To rebuild the lists, download it to `data/raw/concreteness_ratings.csv` (see [Rebuilding the data](#rebuilding-the-data)).
+
+[`backend/scripts/build_word_lists.py`](backend/scripts/build_word_lists.py) builds three files from it:
 
 - `data/guess_words.txt`: every single word in the dataset that has a GloVe vector and isn't a proper noun (about 31,000).
 - `data/target_words.txt`: the possible answers. These are nouns known by at least 95% of people, with a concreteness rating of at least 4.0 out of 5 and a subtitle frequency of at least 50, minus plurals and the words in `data/target_blocklist.txt` (about 2,700).
