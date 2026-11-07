@@ -3,6 +3,14 @@ const SUGGESTION_LABELS = {
     hint: "🧠 Hint",
 };
 
+// '"cats" (as "cat")' when a plural or verb form counted as its base word.
+function describeGuess(result) {
+    if (result.matched && result.matched !== result.guess) {
+        return `"${result.guess}" (as "${result.matched}")`;
+    }
+    return `"${result.guess}"`;
+}
+
 export class GameUI {
     constructor(apiClient) {
         this.api = apiClient;
@@ -68,7 +76,7 @@ export class GameUI {
         }
 
         if (result.is_correct) {
-            this.resultText.textContent = `🎉 Correct! "${result.guess}" is the target word.`;
+            this.resultText.textContent = `🎉 Correct! "${result.matched || result.guess}" is the target word.`;
             this.resultText.classList.add("result-text-success");
 
             if (this.scoreText && typeof result.score === "number") {
@@ -77,8 +85,8 @@ export class GameUI {
             return;
         }
 
-        const { guess, rank, total, similarity, percentile, hotness } = result;
-        this.resultText.textContent = `Guess "${guess}": rank #${rank}/${total
+        const { rank, total, similarity, percentile, hotness } = result;
+        this.resultText.textContent = `Guess ${describeGuess(result)}: rank #${rank}/${total
             }, similarity=${similarity.toFixed(4)} (${percentile.toFixed(1)} percentile) — ${hotness}`;
 
         this.applyHotnessColor(hotness);
@@ -109,12 +117,12 @@ export class GameUI {
             li.textContent = `❌ "${result.guess}" — invalid (${result.error})`;
         } else if (result.is_correct) {
             if (typeof result.score === "number") {
-                li.textContent = `✅ "${result.guess}" — CORRECT! Final score: ${result.score} points.`;
+                li.textContent = `✅ ${describeGuess(result)} — CORRECT! Final score: ${result.score} points.`;
             } else {
-                li.textContent = `✅ "${result.guess}" — CORRECT!`;
+                li.textContent = `✅ ${describeGuess(result)} — CORRECT!`;
             }
         } else {
-            li.textContent = `⭐ "${result.guess}" — rank #${result.rank}/${result.total
+            li.textContent = `⭐ ${describeGuess(result)} — rank #${result.rank}/${result.total
                 }, sim=${result.similarity.toFixed(3)}, ${result.hotness}`;
         }
 

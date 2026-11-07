@@ -33,6 +33,7 @@ def make_guess_endpoint(
     return GuessResponse(
         **{
             "guess": result.get("guess", ""),
+            "matched": result.get("matched"),
             "valid": bool(result.get("valid", False)),
             "error": result.get("error"),
             "is_correct": result.get("is_correct"),

@@ -1,6 +1,6 @@
 # Word Hunt
 
-A word-guessing game where the only clue is meaning. The server picks a secret noun; you guess words and are told how semantically close each guess is, measured by cosine similarity between GloVe word embeddings. Each guess is ranked against the full vocabulary, so you can feel your way from "Freezing" to "Boiling" until you land on the answer.
+A word-guessing game where the only clue is meaning. The server picks a secret noun; you guess words and are told how semantically close each guess is, measured by cosine similarity between GloVe word embeddings. Every guess is ranked against the full vocabulary of about 31,000 words, so you can feel your way from "Freezing" to "Boiling" until you land on the answer.
 
 **Play it:** [sagnik31.github.io/word-hunt](https://sagnik31.github.io/word-hunt/)
 
@@ -8,10 +8,14 @@ The backend runs on Render's free tier and sleeps when idle, so the first reques
 
 ## How to play
 
-1. Guess any common noun. The game shows its rank among all ~2,300 words in the vocabulary (the answer is rank 1), its similarity score, and a temperature label.
-2. Use the ranks to steer toward the answer. A guess of `ocean` that ranks #4 means you are very close; one that ranks #1,800 means you should change direction.
-3. If you get stuck, **Hint** or **Similar Word** reveals a word ranked closer than your best guess so far. Each use costs points.
-4. **Quit** at any time to reveal the answer and receive partial credit.
+1. Guess any common English word: a noun, verb, adjective or anything else. The game shows its rank among all ~31,000 words (the answer is rank 1), its similarity score, and a temperature label.
+2. Use the ranks to steer toward the answer. A guess that ranks #4 means you are very close; one that ranks #20,000 means you should change direction.
+3. Plurals and verb forms count as their base word: `cats` is scored as `cat`, and `baked` as `bake`. If the answer is `dog`, guessing `dogs` wins.
+4. Proper nouns are never accepted: no names, places, brands, days or months.
+5. If you get stuck, **Hint** or **Similar Word** reveals a word ranked closer than your best guess so far. Each use costs points.
+6. **Quit** at any time to reveal the answer and receive partial credit.
+
+The answer is always an everyday, picturable noun such as `toothpaste`, `magnet` or `yogurt`, drawn from a curated list of about 2,700 words.
 
 Temperature labels are based on the guess's percentile rank:
 
@@ -39,26 +43,35 @@ Quitting scores half of the best percentile you reached, minus the same help pen
 The project is split into an offline data pipeline, a small API, and a static frontend.
 
 ```
-Offline:  common_nouns.txt + GloVe 300d  ──►  embeddings.npz  ──►  similarity.txt
+Offline:  concreteness ratings ──► build_word_lists.py ──► guess_words.txt, target_words.txt, word_forms.txt
+          guess_words.txt + GloVe 300d ──► extract_embeddings.py ──► embeddings.npz
 
-Runtime:  similarity.txt  ──►  FastAPI backend (Render)  ◄── REST ──►  Browser frontend (GitHub Pages)
+Runtime:  embeddings.npz + word lists ──► FastAPI backend (Render) ◄── REST ──► Browser frontend (GitHub Pages)
 ```
 
-**Offline pipeline.** Scripts in [`backend/scripts/`](backend/scripts/) look up a 300-dimensional GloVe vector for each word in the vocabulary, then compute the cosine similarity of every word against every other word and write the fully sorted neighbour list for each word to `data/similarity.txt`.
+**Word lists.** [`backend/scripts/build_word_lists.py`](backend/scripts/build_word_lists.py) builds three files from the concreteness ratings dataset (see [Data sources](#data-sources)):
 
-**Backend.** At startup, the game engine scans `similarity.txt` once and records the byte offset of each line. When a round starts, it seeks to the target word's line and loads only that ranking. A guess is then a dictionary lookup, so the server needs no NumPy, no model, no GPU, and no database. It fits comfortably on a free hosting tier.
+- `data/guess_words.txt`: every single word in the dataset that has a GloVe vector and isn't a proper noun (about 31,000).
+- `data/target_words.txt`: the possible answers. These are nouns known by at least 95% of people, with a concreteness rating of at least 4.0 out of 5 and a subtitle frequency of at least 50, minus plurals and the words in `data/target_blocklist.txt` (about 2,700).
+- `data/word_forms.txt`: about 22,000 plurals and verb forms that aren't guess words themselves, each mapped to its base word (`cats` → `cat`). The rules live in [`backend/utils/word_forms.py`](backend/utils/word_forms.py).
+
+A word counts as a proper noun when the WordNet dictionary only knows it with a capital letter (`Monday`, `Kleenex`), or when it's listed in `data/proper_nouns.txt`.
+
+**Embeddings.** [`backend/scripts/extract_embeddings.py`](backend/scripts/extract_embeddings.py) looks up a 300-dimensional GloVe vector for every guess word, scales each to unit length, and saves them as float16 in `data/embeddings.npz` (about 18 MB).
+
+**Backend.** At startup, the game engine loads the embeddings and word lists once (about 115 MB of memory). When a round starts, it picks an answer from the target list and ranks every guess word by cosine similarity to it, which takes a few milliseconds. A guess is then a dictionary lookup.
 
 **Frontend.** Plain HTML, CSS and JavaScript ES modules with no build step, served from [`docs/`](docs/) by GitHub Pages. It talks to the backend over a small REST API.
 
 ### Tech stack
 
-| Layer    | Technology                                         |
-| -------- | -------------------------------------------------- |
-| Backend  | Python, FastAPI, Uvicorn, Pydantic                 |
-| Frontend | HTML, CSS, vanilla JavaScript (ES modules)         |
-| Data     | GloVe 6B 300d embeddings, NumPy (offline only)     |
-| Testing  | pytest, HTTPX (via FastAPI's `TestClient`)         |
-| Hosting  | Render (API), GitHub Pages (frontend)              |
+| Layer    | Technology                                                     |
+| -------- | -------------------------------------------------------------- |
+| Backend  | Python, FastAPI, Uvicorn, Pydantic, NumPy                      |
+| Frontend | HTML, CSS, vanilla JavaScript (ES modules)                     |
+| Data     | GloVe 6B 300d embeddings, Brysbaert et al. concreteness ratings, NLTK WordNet (offline only) |
+| Testing  | pytest, HTTPX (via FastAPI's `TestClient`)                     |
+| Hosting  | Render (API), GitHub Pages (frontend)                          |
 
 ## Running locally
 
@@ -67,7 +80,7 @@ Runtime:  similarity.txt  ──►  FastAPI backend (Render)  ◄── REST �
 - Python 3.10 or newer (developed on 3.13)
 - Git
 
-The precomputed data files are committed to the repository, so you do not need the GloVe embeddings to run the game. Note that `data/similarity.txt` is about 90 MB, which makes the clone fairly large.
+The generated data files are committed to the repository, so you do not need GloVe or the ratings dataset to run the game. The git history still contains an old 90 MB data file (`data/similarity.txt`), which makes the clone fairly large.
 
 ### 1. Clone and install
 
@@ -103,11 +116,11 @@ From the repository root:
 uvicorn backend.api:app --reload --port 8000
 ```
 
-The API is now at `http://localhost:8000`, with interactive documentation at `http://localhost:8000/docs`. On Windows, `run_backend.bat` does the same thing using the `.venv` environment.
+The API is now at `http://localhost:8000`, with interactive documentation at `http://localhost:8000/docs`. On Windows, `run_backend.bat` does the same thing using the `.venv` environment. The server prints the current answer at startup (`[startup] Target word set to: ...`), which is handy for testing.
 
 ### 3. Point the frontend at your local backend
 
-[`docs/js/config.js`](docs/js/config.js) points at the deployed backend by default. Change it to your local server:
+[`docs/js/config.js`](docs/js/config.js) points at the deployed backend. Don't commit a localhost URL there. Instead, copy `docs/` to a scratch folder and change `API_BASE_URL` in the copy:
 
 ```js
 export const CONFIG = {
@@ -117,10 +130,10 @@ export const CONFIG = {
 
 ### 4. Serve the frontend
 
-ES modules cannot be loaded from `file://` URLs, so serve the `docs/` folder over HTTP. In a second terminal:
+ES modules cannot be loaded from `file://` URLs, so serve the folder over HTTP. In a second terminal:
 
 ```bash
-python -m http.server 8080 -d docs
+python -m http.server 8080 -d path/to/your/docs-copy
 ```
 
 Open [http://localhost:8080](http://localhost:8080) and start guessing.
@@ -135,14 +148,14 @@ From the repository root:
 python -m pytest
 ```
 
-Use `python -m pytest` rather than plain `pytest`; the former puts the repository root on the import path so the `backend` package can be found.
+Use `python -m pytest` rather than plain `pytest`; the former puts the repository root on the import path so the `backend` package can be found. The tests also check the generated word lists, for example that no proper noun appears in them.
 
 ## API
 
 | Method | Endpoint        | Description                                                         |
 | ------ | --------------- | ------------------------------------------------------------------- |
 | GET    | `/health`       | Reports whether the game engine loaded successfully.                |
-| POST   | `/guess`        | Body: `{"word": "..."}`. Returns rank, similarity, percentile and temperature label; includes the score and starts a new round on a correct guess. |
+| POST   | `/guess`        | Body: `{"word": "..."}`. Returns rank, similarity, percentile and temperature label. `matched` holds the base word when a plural or verb form was scored as it (`cats` → `cat`). Includes the score and starts a new round on a correct guess. |
 | POST   | `/hint`         | Returns a word ranked closer than the player's best so far.         |
 | POST   | `/similar_word` | Same as `/hint`, tracked separately for scoring and hint strength.  |
 | POST   | `/quit`         | Reveals the answer, returns the partial score, and starts a new round. |
@@ -151,25 +164,36 @@ Full request and response schemas are available at `/docs` while the server is r
 
 ## Rebuilding the data
 
-You only need this if you change the vocabulary. It requires the extra script dependencies and the GloVe 6B 300d vectors (about 1 GB, not committed), available from the [Stanford GloVe project](https://nlp.stanford.edu/projects/glove/).
+You only need this if you change the word lists, the filters or the blocklists. Install the script dependencies and WordNet:
 
 ```bash
 pip install -r requirements-scripts.txt
 ```
 
-Place `glove.6B.300d.txt` in `data/`, then run from the repository root:
+```bash
+python -m nltk.downloader wordnet
+```
+
+You also need two inputs that are not committed:
+
+- `data/glove.6B.300d.txt`: GloVe 6B 300d vectors (about 1 GB), from the [Stanford GloVe project](https://nlp.stanford.edu/projects/glove/).
+- `data/raw/concreteness_ratings.csv`: the concreteness ratings (1.6 MB), from the [Hugging Face mirror](https://huggingface.co/datasets/StephanAkkerman/concreteness-ratings).
+
+Then run, from the repository root:
+
+```bash
+python backend/scripts/build_word_lists.py
+```
 
 ```bash
 python backend/scripts/extract_embeddings.py
-python backend/scripts/build_similarity.py
 ```
 
-The first script writes `data/embeddings.npz` and lists any words without a GloVe vector in `data/missing.txt`. The second writes `data/similarity.txt`.
+The first script writes the three word-list files and prints how many words each filter removed. The second writes `data/embeddings.npz`.
 
-Two further scripts support planned features and are not used by the game yet:
+To change which words can be the answer, edit `data/target_blocklist.txt` (one word per line) and rerun the first script. To ban a proper noun that slipped through, add it to `data/proper_nouns.txt`. The filter thresholds are constants at the top of `build_word_lists.py`.
 
-- `build_vocabulary.py` generates the 20,000-noun candidate list in `words_20k.txt`. It needs `python -m spacy download en_core_web_sm` first.
-- `generate_big_hints.py` writes riddle-style hints to `data/big_hints.json` using a locally running Ollama model.
+`generate_big_hints.py` writes riddle-style hints for the first 100 target words to `data/big_hints.json`, using a locally running Ollama model. The game doesn't use these hints yet.
 
 ## Project structure
 
@@ -177,19 +201,23 @@ Two further scripts support planned features and are not used by the game yet:
 word-hunt/
 ├── backend/
 │   ├── api.py            FastAPI app, startup and CORS
-│   ├── game.py           WordGameEngine: target selection and round state
+│   ├── game.py           WordGameEngine: loads data, picks answers, ranks words
 │   ├── scoring.py        Final score rules
 │   ├── config.py         File paths and allowed CORS origins
 │   ├── schemas.py        Pydantic request and response models
 │   ├── routes/           One router per endpoint
 │   ├── actions/          Guess and hint logic
-│   ├── utils/            File loaders, percentile and temperature labels
+│   ├── utils/            File loaders, plural and verb-form rules, percentile labels
 │   ├── scripts/          Offline data pipeline
-│   └── tests/            API and engine tests
+│   └── tests/            API, engine and word-list tests
 ├── data/
-│   ├── common_nouns.txt  Vocabulary
-│   ├── embeddings.npz    GloVe vectors for the vocabulary
-│   └── similarity.txt    Sorted neighbour list for every word
+│   ├── guess_words.txt      Words you can guess
+│   ├── target_words.txt     Possible answers
+│   ├── word_forms.txt       Plurals and verb forms, mapped to base words
+│   ├── embeddings.npz       GloVe vectors for every guess word
+│   ├── target_blocklist.txt Words that are never the answer (hand-edited)
+│   ├── proper_nouns.txt     Extra proper nouns to exclude (hand-edited)
+│   └── big_hints.json       Riddle hints (not used yet)
 ├── docs/                 Frontend, served by GitHub Pages
 ├── build.sh, start.sh    Render build and start commands
 └── requirements*.txt     Server, dev and script dependencies
@@ -201,10 +229,16 @@ word-hunt/
 
 **Frontend (GitHub Pages).** In the repository settings, under Pages, deploy from the `main` branch and the `/docs` folder. Set `API_BASE_URL` in `docs/js/config.js` to the Render service URL, and make sure the Pages origin is listed in `CORS_ORIGINS` in `backend/config.py`.
 
+## Data sources
+
+- **GloVe:** Pennington, Socher & Manning (2014), *GloVe: Global Vectors for Word Representation*. The 6B 300d vectors.
+- **Concreteness ratings:** Brysbaert, Warriner & Kuperman (2014), *Concreteness ratings for 40 thousand generally known English word lemmas*, Behavior Research Methods 46(3), 904–911, doi:10.3758/s13428-013-0403-5. The original data is at [osf.io/kj76e](https://osf.io/kj76e/); the game uses the [Hugging Face mirror](https://huggingface.co/datasets/StephanAkkerman/concreteness-ratings).
+- **WordNet:** Princeton University, via NLTK. Used to detect proper nouns.
+
 ## Limitations and roadmap
 
 - **One game per server.** The backend holds a single game in memory, so everyone connected plays the same word and shares the same counters. Per-player sessions are the next structural change.
-- **Vocabulary quality.** The current list contains some proper nouns and a few split two-word entries. Separate lists are planned: a small curated set of target words and a much broader set of accepted guesses. A 20,000-noun candidate list is already in `words_20k.txt`.
+- **Generous temperature labels.** With ~31,000 words, the top 5% ("Very hot") covers about 1,500 words, so a guess can be labelled "Very hot" while still far from the answer.
 - **Riddle hints.** LLM-generated riddle hints exist for 100 words but are not wired into the game yet.
 - **Under consideration:** leaderboards, timed and category-based modes, and UI polish.
 

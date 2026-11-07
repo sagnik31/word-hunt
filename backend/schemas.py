@@ -9,6 +9,8 @@ class GuessRequest(BaseModel):
 
 class GuessResponse(BaseModel):
     guess: str
+    # The base word the guess counted as ("cats" -> "cat"), if different.
+    matched: Optional[str] = None
     valid: bool
     error: Optional[str] = None
     is_correct: Optional[bool] = None

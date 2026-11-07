@@ -1,0 +1,117 @@
+# Words that must never be the secret answer. They can still be guessed.
+# One word per line; anything after "#" is a comment.
+# Edit this file to cross out words, then rerun:
+#     python backend/scripts/build_word_lists.py
+
+# Swear words, slurs and insults
+ass
+cunt
+dyke
+gypsy
+midget
+negro
+pecker
+puss
+pussy
+shit
+tit
+turd
+whore
+
+# Sexual or explicit
+anus
+boner
+booty
+brothel
+buttocks
+cleavage
+clitoris
+cock
+condom
+crotch
+dildo
+douche
+enema
+erection
+genitals
+hickey
+hooker
+lesbian
+lovemaking
+masturbation
+nipple
+nudity
+panties
+penis
+pimp
+porn
+pornography
+prostitute
+rapist
+rubbers
+semen
+sex
+spanking
+sperm
+stripper
+testicle
+thong
+vagina
+vibrator
+whorehouse
+
+# Gross
+excrement
+fart
+poop
+
+# Proper nouns and brand names
+bible
+hobbit
+mayflower
+scrabble
+
+# Plurals the automatic rule can't catch (the singular is kept, or it's too vague)
+antibiotics
+antiques
+ashes
+brushes
+calves
+chemicals
+children
+cosmetics
+digits
+facilities
+funds
+goods
+ingredients
+initials
+men
+mice
+mines
+movers
+natives
+paramedics
+people
+scratches
+steps
+sticks
+steroids
+teeth
+townspeople
+
+# Too generic to be a fun answer
+adult
+guy
+item
+length
+line
+man
+material
+person
+piece
+product
+site
+structure
+surface
+woman

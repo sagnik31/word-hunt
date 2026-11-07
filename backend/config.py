@@ -7,8 +7,10 @@ BASE_DIR = BACKEND_DIR.parent
 # Data directory is at project_root/data
 DATA_DIR = BASE_DIR / "data"
 
-SIMILARITY_PATH = DATA_DIR / "similarity.txt"
-NOUNS_PATH = DATA_DIR / "common_nouns.txt"
+# Built by backend/scripts/build_word_lists.py and extract_embeddings.py
+EMBEDDINGS_PATH = DATA_DIR / "embeddings.npz"  # every guess word's vector
+TARGET_WORDS_PATH = DATA_DIR / "target_words.txt"
+WORD_FORMS_PATH = DATA_DIR / "word_forms.txt"
 
 CORS_ORIGINS = [
     "https://sagnik31.github.io",

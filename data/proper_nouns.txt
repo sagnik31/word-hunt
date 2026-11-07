@@ -1,0 +1,52 @@
+# Proper nouns that WordNet doesn't know, so the automatic check can't catch them.
+# Words here can never be guessed or be the answer.
+# One word per line; anything after "#" is a comment. After editing, rerun:
+#     python backend/scripts/build_word_lists.py
+
+# Brands, products and websites
+bluetooth
+cadillac
+dropbox
+ebay
+facebook
+gameboy
+google
+ipad
+iphone
+itunes
+jazzercise
+jetski
+kevlar
+laserjet
+listerine
+mastercard
+myspace
+nintendo
+photoshop
+powerpoint
+rolex
+skype
+tupperware
+walmart
+wikipedia
+xbox
+youtube
+
+# Characters, people and named things
+alzheimer
+geo
+grinch
+illuminati
+kryptonite
+lollapalooza
+macarena
+muppet
+paralympics
+rapunzel
+spiderman
+woodhouse
+
+# Groups, beliefs and places
+aquarian
+scientologist
+westcoast

@@ -7,7 +7,7 @@ import requests
 OLLAMA_URL = "http://localhost:11434/api/generate"
 MODEL_NAME = "qwen3:4b-instruct-2507-q8_0"
 
-INPUT_FILE = Path("data/similarity.txt")
+INPUT_FILE = Path("data/target_words.txt")
 OUTPUT_FILE = Path("data/big_hints.json")
 
 
@@ -17,9 +17,7 @@ def extract_words():
         for line in f:
             if not line.strip():
                 continue
-            # Split on tab → first column is target word
-            word = line.split("\t", 1)[0].strip()
-            words.append(word)
+            words.append(line.strip())
             if len(words) == 100:
                 break
     return words

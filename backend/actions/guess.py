@@ -10,12 +10,23 @@ def make_guess(
     target_pos_map: Dict[str, int],
     target_total: int,
     vocab_set: Set[str],
-    offsets: Dict[str, int],
+    word_forms: Dict[str, str],
+    target_plurals: Set[str],
 ) -> Dict[str, Optional[object]]:
-    guess_norm = (guess_word or "").strip().lower()
+    typed = (guess_word or "").strip().lower()
+
+    # Plurals and verb forms count as their base word: "cats" -> "cat".
+    # A plural of the answer wins even when it's a guess word itself ("dogs").
+    if typed in target_plurals:
+        guess_norm = target_word
+    elif typed not in vocab_set:
+        guess_norm = word_forms.get(typed, typed)
+    else:
+        guess_norm = typed
 
     base_response: Dict[str, Optional[object]] = {
-        "guess": guess_norm,
+        "guess": typed,
+        "matched": guess_norm if guess_norm != typed else None,
         "valid": False,
         "error": None,
         "is_correct": None,
@@ -32,10 +43,6 @@ def make_guess(
 
     if guess_norm not in vocab_set:
         base_response["error"] = "Word is not in the allowed vocabulary."
-        return base_response
-
-    if guess_norm not in offsets:
-        base_response["error"] = "Word is missing from similarity data."
         return base_response
 
     base_response["valid"] = True

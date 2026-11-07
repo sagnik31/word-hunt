@@ -1,58 +1,55 @@
 import random
 import time
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
+
+import numpy as np
 
 from backend.actions.guess import make_guess
 from backend.actions.similar_word import get_similar_word
-from backend.config import NOUNS_PATH, SIMILARITY_PATH
-from backend.utils.loaders import build_line_index, load_vocab, read_similarity_row
+from backend.config import EMBEDDINGS_PATH, TARGET_WORDS_PATH, WORD_FORMS_PATH
+from backend.utils.loaders import load_word_forms, load_word_list
+from backend.utils.word_forms import plural_forms
 
 
 class WordGameEngine:
     """
     Engine for the hot-and-cold word guessing game.
+
+    Every guess word has a unit-length GloVe vector, so when a round starts the
+    engine ranks all of them by cosine similarity to the answer (a few ms).
     """
 
     def __init__(
         self,
-        similarity_path: str = str(SIMILARITY_PATH),
-        nouns_path: str = str(NOUNS_PATH),
+        embeddings_path: str = str(EMBEDDINGS_PATH),
+        target_words_path: str = str(TARGET_WORDS_PATH),
+        word_forms_path: str = str(WORD_FORMS_PATH),
         target_word: Optional[str] = None,
     ):
-        self.similarity_path = Path(similarity_path)
-        self.nouns_path = Path(nouns_path)
+        data = np.load(embeddings_path)
+        self.words = data["words"]  # numpy array, so a ranking can index it
+        # float16 on disk; float32 for fast matrix products.
+        self.vectors = data["vectors"].astype(np.float32)
+        self.word_index: Dict[str, int] = {
+            w: i for i, w in enumerate(self.words.tolist())
+        }
+        self.vocab_set: Set[str] = set(self.word_index)
+        print(f"[WordGameEngine] Loaded {len(self.vocab_set)} guess words")
 
-        print(f"[WordGameEngine]   similarity_path: {self.similarity_path}")
-        print(f"[WordGameEngine]   nouns_path: {self.nouns_path}")
-        print(
-            f"[WordGameEngine]   Files exist: similarity={self.similarity_path.exists()}, nouns={self.nouns_path.exists()}"
-        )
+        self.targets: List[str] = [
+            w for w in load_word_list(target_words_path) if w in self.word_index
+        ]
+        if not self.targets:
+            raise RuntimeError("No target words have an embedding.")
+        print(f"[WordGameEngine] Loaded {len(self.targets)} target words")
 
-        if not self.similarity_path.exists():
-            raise FileNotFoundError(
-                f"similarity file not found: {self.similarity_path}"
-            )
-        if not self.nouns_path.exists():
-            raise FileNotFoundError(f"nouns file not found: {self.nouns_path}")
-
-        self.vocab: List[str] = load_vocab(str(self.nouns_path))
-        self.vocab_set = set(self.vocab)
-        print(f"[WordGameEngine] Loaded {len(self.vocab)} vocabulary words")
-        if len(self.vocab) > 0:
-            print(f"[WordGameEngine] First few words: {self.vocab[:10]}")
-
-        self.offsets: Dict[str, int] = build_line_index(str(self.similarity_path))
-        print(
-            f"[WordGameEngine] Built index for {len(self.offsets)} words in similarity file"
-        )
-
-        vocab_in_similarity = set(self.offsets.keys())
-        if not vocab_in_similarity:
-            raise RuntimeError("No words found in similarity file.")
+        # Plurals and verb forms accepted as their base word ("cats" -> "cat").
+        self.word_forms: Dict[str, str] = load_word_forms(word_forms_path)
+        print(f"[WordGameEngine] Loaded {len(self.word_forms)} extra word forms")
 
         # Target-related data
         self.target_word: str = ""
+        self.target_plurals: Set[str] = set()
         self.target_similarity_list: List[Tuple[str, float]] = []
         self.target_pos_map: Dict[str, int] = {}
         self.target_total: int = 0
@@ -67,57 +64,39 @@ class WordGameEngine:
         self.best_percentile: float = 0.0
 
         self.set_target(target_word)
-        print(
-            f"[WordGameEngine] Initialized successfully with target: {self.target_word}"
-        )
 
     def set_target(self, target_word: Optional[str] = None) -> str:
-        available = list(self.offsets.keys())
-
-        # If a specific target is requested, use it and validate once
         if target_word is not None:
-            target_word = target_word.strip().lower()
-            if target_word not in self.offsets:
-                raise ValueError(
-                    f"Requested target not in similarity data: {target_word}"
-                )
-            candidates = [target_word]
+            chosen = target_word.strip().lower()
+            if chosen not in self.targets:
+                raise ValueError(f"Requested target is not a target word: {chosen}")
         else:
             # Don't repeat the word that was just played.
-            candidates = [w for w in available if w != self.target_word] or available
+            candidates = [w for w in self.targets if w != self.target_word]
+            chosen = random.choice(candidates or self.targets)
 
-        for _ in range(len(candidates) * 3):  # some upper bound on attempts
-            chosen = random.choice(candidates)
-            offset = self.offsets[chosen]
-            sims = read_similarity_row(str(self.similarity_path), offset)
+        # Rank every other guess word by similarity to the answer. The answer
+        # itself is left out of the list (it's rank 1), so a hint can't reveal it.
+        i = self.word_index[chosen]
+        sims = self.vectors @ self.vectors[i]
+        order = np.argsort(-sims, kind="stable")
+        order = order[order != i]
+        neighbours = list(zip(self.words[order].tolist(), sims[order].tolist()))
 
-            # The ranking must not contain the target itself or repeated
-            # words, or a hint could reveal the answer.
-            seen = {chosen}
-            neighbours: List[Tuple[str, float]] = []
-            for w, s in sims:
-                if w not in seen:
-                    seen.add(w)
-                    neighbours.append((w, s))
+        self.target_word = chosen
+        self.target_plurals = plural_forms(chosen) - {chosen}
+        self.target_similarity_list = neighbours
+        self.target_total = len(neighbours) + 1  # +1 for the answer
+        self.target_pos_map = {w: idx for idx, (w, _) in enumerate(neighbours)}
 
-            if neighbours:  # only accept targets with non-empty similarity list
-                self.target_word = chosen
-                self.target_similarity_list = neighbours
-                self.target_total = len(neighbours) + 1  # +1 for self
-                self.target_pos_map = {
-                    w: idx for idx, (w, _) in enumerate(neighbours)
-                }
+        # Reset gameplay + scoring state
+        self.best_rank_overall = None
+        self.hint_count = 0
+        self.similar_click_count = 0
+        self.best_percentile = 0.0
+        self.start_time = None  # starts on the first guess or help
 
-                # Reset gameplay + scoring state
-                self.best_rank_overall = None
-                self.hint_count = 0
-                self.similar_click_count = 0
-                self.best_percentile = 0.0
-                self.start_time = None  # starts on the first guess or help
-
-                return self.target_word
-
-        raise RuntimeError("Could not find a target with a non-empty similarity list.")
+        return self.target_word
 
     def get_target(self) -> str:
         return self.target_word
@@ -189,7 +168,8 @@ class WordGameEngine:
             self.target_pos_map,
             self.target_total,
             self.vocab_set,
-            self.offsets,
+            self.word_forms,
+            self.target_plurals,
         )
         if result.get("valid"):
             self._update_best_rank(result.get("rank"))

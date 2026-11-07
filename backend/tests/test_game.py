@@ -3,14 +3,19 @@ import pytest
 from backend.game import WordGameEngine
 from backend.scoring import calculate_final_score
 
-TARGET = "aardvark"
-# Appears twice in common_nouns.txt, so its similarity row once contained itself.
-REPEATED_TARGET = "america"
+TARGET = "apple"
+
+
+@pytest.fixture(scope="module")
+def shared_engine():
+    # Loading the embeddings is the slow part, so do it once per module.
+    return WordGameEngine(target_word=TARGET)
 
 
 @pytest.fixture
-def engine():
-    return WordGameEngine(target_word=TARGET)
+def engine(shared_engine):
+    shared_engine.set_target(TARGET)  # fresh round for each test
+    return shared_engine
 
 
 def _guess_at_rank(engine, rank):
@@ -55,19 +60,33 @@ def test_correct_guess_is_rank_one(engine):
     assert result["hotness"] == "Correct"
 
 
-def test_ranking_excludes_target_and_repeats():
-    e = WordGameEngine(target_word=REPEATED_TARGET)
-    words = [w for w, _ in e.target_similarity_list]
-    assert REPEATED_TARGET not in words
+def test_ranking_covers_every_other_guess_word(engine):
+    words = [w for w, _ in engine.target_similarity_list]
+    assert TARGET not in words
     assert len(words) == len(set(words))
-    assert e.target_total == len(words) + 1
+    assert set(words) | {TARGET} == engine.vocab_set
+    assert engine.target_total == len(words) + 1
 
 
-def test_hint_never_reveals_the_answer():
-    e = WordGameEngine(target_word=REPEATED_TARGET)
-    _guess_at_rank(e, 3)
+def test_ranking_is_sorted_by_similarity(engine):
+    sims = [s for _, s in engine.target_similarity_list]
+    assert sims == sorted(sims, reverse=True)
+    assert sims[0] < 1.0
+    # Related words rank far better than unrelated ones.
+    pos = engine.target_pos_map
+    assert pos["fruit"] < 100 < pos["tax"]
+
+
+def test_targets_come_from_the_target_list(engine):
+    targets = set(engine.targets)
+    for _ in range(20):
+        assert engine.set_target() in targets
+
+
+def test_hint_never_reveals_the_answer(engine):
+    _guess_at_rank(engine, 3)
     for _ in range(50):
-        assert e.get_hint()["word"] != REPEATED_TARGET
+        assert engine.get_hint()["word"] != TARGET
 
 
 def test_next_target_is_never_the_same_word(engine):
@@ -110,3 +129,25 @@ def test_quitting_never_beats_a_quick_solve():
     best_quit = calculate_final_score(False, None, 0, 0, 100.0)
     quick_solve = calculate_final_score(True, 0.0, 0, 0, None, now=5.0)
     assert best_quit < quick_solve == 100
+
+
+def test_plural_of_the_answer_wins(engine):
+    result = engine.make_guess(TARGET + "s")
+    assert result["is_correct"] is True
+    assert result["guess"] == TARGET + "s"
+    assert result["matched"] == TARGET
+
+
+def test_inflected_guess_counts_as_its_base_word(engine):
+    plain = engine.make_guess("cat")
+    plural = engine.make_guess("Cats")
+    assert plural["valid"] is True
+    assert plural["matched"] == "cat"
+    assert plural["rank"] == plain["rank"]
+    assert plain["matched"] is None
+
+
+def test_unknown_word_is_still_rejected(engine):
+    result = engine.make_guess("xqzzt")
+    assert result["valid"] is False
+    assert result["matched"] is None

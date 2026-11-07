@@ -46,3 +46,10 @@ def test_make_guess_valid(client):
     data = response.json()
     assert data["valid"] is True
     assert "rank" in data
+
+def test_plural_guess_reports_its_base_word(client):
+    response = client.post("/guess", json={"word": "cats"})
+    data = response.json()
+    assert data["valid"] is True
+    assert data["guess"] == "cats"
+    assert data["matched"] == "cat"
