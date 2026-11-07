@@ -3,37 +3,44 @@ export class ApiClient {
         this.baseUrl = baseUrl;
     }
 
-    async checkHealth() {
-        const res = await fetch(`${this.baseUrl}/health`);
+    async get(path) {
+        const res = await fetch(`${this.baseUrl}${path}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();
     }
 
-    async makeGuess(word) {
-        const res = await fetch(`${this.baseUrl}/guess`, {
+    async post(path, body) {
+        const res = await fetch(`${this.baseUrl}${path}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ word }),
+            body: JSON.stringify(body),
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();
     }
 
-    async getSimilarWord() {
-        const res = await fetch(`${this.baseUrl}/similar_word`, { method: "POST" });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json();
+    checkHealth() {
+        return this.get("/health");
     }
 
-    async getHint() {
-        const res = await fetch(`${this.baseUrl}/hint`, { method: "POST" });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json();
+    getToday() {
+        return this.get("/today");
     }
 
-    async quitGame() {
-        const res = await fetch(`${this.baseUrl}/quit`, { method: "POST" });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json();
+    // stats: { elapsed_seconds, hint_count, similar_count, best_rank }
+    makeGuess(puzzle, word, stats) {
+        return this.post("/guess", { puzzle, word, stats });
+    }
+
+    getSimilarWord(puzzle, bestRank, timesUsed) {
+        return this.post("/similar_word", { puzzle, best_rank: bestRank, times_used: timesUsed });
+    }
+
+    getHint(puzzle, bestRank, timesUsed) {
+        return this.post("/hint", { puzzle, best_rank: bestRank, times_used: timesUsed });
+    }
+
+    quitGame(puzzle, stats) {
+        return this.post("/quit", { puzzle, stats });
     }
 }

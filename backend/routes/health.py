@@ -7,8 +7,8 @@ router = APIRouter()
 
 @router.get("/health", response_model=HealthResponse)
 def health(request: Request) -> HealthResponse:
-    engine = getattr(request.app.state, "engine", None)
-    return HealthResponse(
-        status="ok" if engine is not None else "degraded",
-        target_word_loaded=engine is not None,
+    ready = (
+        getattr(request.app.state, "engine", None) is not None
+        and getattr(request.app.state, "schedule", None) is not None
     )
+    return HealthResponse(status="ok" if ready else "degraded", puzzle_ready=ready)

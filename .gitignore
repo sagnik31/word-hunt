@@ -1,4 +1,5 @@
 .vscode/
 __pycache__/
 */glove.6B.300d.txt
-.github/copilot-instructions.md
+data/raw/
+schedule.key

@@ -1,8 +1,7 @@
-from typing import Any, Dict
-
 from fastapi import APIRouter, Depends
 
-from backend.dependencies import get_engine
+from backend.daily import DailySchedule
+from backend.dependencies import get_engine, get_schedule, open_answer
 from backend.game import WordGameEngine
 from backend.schemas import GuessRequest, GuessResponse
 from backend.scoring import calculate_final_score
@@ -14,34 +13,21 @@ router = APIRouter()
 def make_guess_endpoint(
     payload: GuessRequest,
     engine: WordGameEngine = Depends(get_engine),
+    schedule: DailySchedule = Depends(get_schedule),
 ) -> GuessResponse:
-    result: Dict[str, Any] = engine.make_guess(payload.word)
-    is_correct = result.get("is_correct") is True
+    answer = open_answer(schedule, payload.puzzle)
+    result = engine.guess(answer, payload.word)
 
     score = None
-    if is_correct:
+    if result.get("is_correct") is True:
+        stats = payload.stats
         score = calculate_final_score(
             True,
-            engine.start_time,
-            engine.hint_count,
-            engine.similar_click_count,
-            engine.best_percentile,
+            0.0,
+            stats.hint_count,
+            stats.similar_count,
+            None,
+            now=stats.elapsed_seconds,
         )
-        # Reset the game for next round
-        engine.set_target()
 
-    return GuessResponse(
-        **{
-            "guess": result.get("guess", ""),
-            "matched": result.get("matched"),
-            "valid": bool(result.get("valid", False)),
-            "error": result.get("error"),
-            "is_correct": result.get("is_correct"),
-            "rank": result.get("rank"),
-            "total": result.get("total"),
-            "similarity": result.get("similarity"),
-            "percentile": result.get("percentile"),
-            "hotness": result.get("hotness"),
-            "score": score,
-        }
-    )
+    return GuessResponse(**result, score=score)

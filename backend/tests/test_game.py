@@ -1,52 +1,61 @@
+from datetime import date
+
 import pytest
 
+from backend.daily import DailySchedule, decode, seconds_until_next_puzzle, word_code
 from backend.game import WordGameEngine
 from backend.scoring import calculate_final_score
+from backend.utils.scoring import describe_hotness
 
-TARGET = "apple"
+ANSWER = "apple"
 
 
 @pytest.fixture(scope="module")
-def shared_engine():
+def engine():
     # Loading the embeddings is the slow part, so do it once per module.
-    return WordGameEngine(target_word=TARGET)
+    return WordGameEngine()
 
 
-@pytest.fixture
-def engine(shared_engine):
-    shared_engine.set_target(TARGET)  # fresh round for each test
-    return shared_engine
+@pytest.fixture(scope="module")
+def ranking(engine):
+    return engine.ranking(ANSWER)
 
 
-def _guess_at_rank(engine, rank):
-    # The target is rank 1, so neighbour index i is rank i + 2.
-    word = engine.target_similarity_list[rank - 2][0]
-    result = engine.make_guess(word)
-    assert result["rank"] == rank
+def _word_at_rank(ranking, rank):
+    word, _, r = ranking.neighbour(rank - 2)
+    assert r == rank
     return word
 
 
-@pytest.mark.parametrize("method", ["get_hint", "get_similar_word"])
-def test_suggestion_is_a_ranked_neighbour(engine, method):
-    info = getattr(engine, method)()
-    assert info["word"] != TARGET
-    assert engine.target_similarity_list[info["rank"] - 2][0] == info["word"]
-    assert info["total"] == engine.target_total
+# --- Ranking ----------------------------------------------------------------
 
 
-@pytest.mark.parametrize("method", ["get_hint", "get_similar_word"])
-def test_suggestion_beats_best_rank(engine, method):
-    _guess_at_rank(engine, 50)
-    for _ in range(20):
-        best = engine.best_rank_overall
-        info = getattr(engine, method)()
-        # Once the closest neighbour (rank 2) is found there's nothing better.
-        assert info["rank"] < best or best == 2
-        assert engine.best_rank_overall == min(best, info["rank"])
+def test_ranking_covers_every_other_guess_word(engine, ranking):
+    words = [str(engine.words[i]) for i in ranking.order]
+    assert ANSWER not in words
+    assert len(words) == len(set(words))
+    assert set(words) | {ANSWER} == engine.vocab_set
+    assert ranking.total == len(words) + 1
 
 
-def test_closest_neighbour_is_not_the_answer(engine):
-    result = engine.make_guess(engine.target_similarity_list[0][0])
+def test_ranking_is_sorted_by_similarity(engine, ranking):
+    sims = ranking.sims[ranking.order]
+    assert all(sims[:-1] >= sims[1:])
+    assert sims[0] < 1.0
+    # Related words rank far better than unrelated ones.
+    rank = ranking.rank_of
+    assert rank[engine.word_index["fruit"]] < 100 < rank[engine.word_index["tax"]]
+
+
+def test_rankings_are_cached(engine):
+    assert engine.ranking(ANSWER) is engine.ranking(ANSWER)
+
+
+# --- Guesses ----------------------------------------------------------------
+
+
+def test_closest_neighbour_is_not_the_answer(engine, ranking):
+    result = engine.guess(ANSWER, _word_at_rank(ranking, 2))
     assert result["is_correct"] is False
     assert result["rank"] == 2
     assert result["hotness"] != "Correct"
@@ -54,68 +63,104 @@ def test_closest_neighbour_is_not_the_answer(engine):
 
 
 def test_correct_guess_is_rank_one(engine):
-    result = engine.make_guess(TARGET)
+    result = engine.guess(ANSWER, ANSWER)
     assert result["is_correct"] is True
     assert result["rank"] == 1
     assert result["hotness"] == "Correct"
 
 
-def test_ranking_covers_every_other_guess_word(engine):
-    words = [w for w, _ in engine.target_similarity_list]
-    assert TARGET not in words
-    assert len(words) == len(set(words))
-    assert set(words) | {TARGET} == engine.vocab_set
-    assert engine.target_total == len(words) + 1
+def test_plural_of_the_answer_wins(engine):
+    result = engine.guess(ANSWER, ANSWER + "s")
+    assert result["is_correct"] is True
+    assert result["guess"] == ANSWER + "s"
+    assert result["matched"] == ANSWER
 
 
-def test_ranking_is_sorted_by_similarity(engine):
-    sims = [s for _, s in engine.target_similarity_list]
-    assert sims == sorted(sims, reverse=True)
-    assert sims[0] < 1.0
-    # Related words rank far better than unrelated ones.
-    pos = engine.target_pos_map
-    assert pos["fruit"] < 100 < pos["tax"]
+def test_inflected_guess_counts_as_its_base_word(engine):
+    plain = engine.guess(ANSWER, "cat")
+    plural = engine.guess(ANSWER, "Cats")
+    assert plural["valid"] is True
+    assert plural["matched"] == "cat"
+    assert plural["rank"] == plain["rank"]
+    assert plain["matched"] is None
 
 
-def test_targets_come_from_the_target_list(engine):
-    targets = set(engine.targets)
+@pytest.mark.parametrize(
+    "word, error",
+    [("", "Empty guess."), ("xqzzt", "Word is not in the allowed vocabulary.")],
+)
+def test_invalid_guesses_are_rejected(engine, word, error):
+    result = engine.guess(ANSWER, word)
+    assert result["valid"] is False
+    assert result["error"] == error
+    assert result["matched"] is None
+
+
+# --- Hint and Similar Word --------------------------------------------------
+
+
+def test_suggestion_is_a_ranked_neighbour(engine, ranking):
+    info = engine.suggest(ANSWER, None, 0)
+    assert info["word"] != ANSWER
+    assert ranking.rank_of[engine.word_index[info["word"]]] == info["rank"]
+    assert info["total"] == ranking.total
+
+
+@pytest.mark.parametrize("times_used", [0, 5])
+def test_suggestion_beats_best_rank(engine, times_used):
+    best = 50
     for _ in range(20):
-        assert engine.set_target() in targets
+        info = engine.suggest(ANSWER, best, times_used)
+        # Once the closest neighbour (rank 2) is found there's nothing better.
+        assert info["rank"] < best or best == 2
+        best = min(best, info["rank"])
 
 
 def test_hint_never_reveals_the_answer(engine):
-    _guess_at_rank(engine, 3)
-    for _ in range(50):
-        assert engine.get_hint()["word"] != TARGET
+    for best in (None, 3, 2):
+        for _ in range(30):
+            assert engine.suggest(ANSWER, best, 5)["word"] != ANSWER
 
 
-def test_next_target_is_never_the_same_word(engine):
-    for _ in range(20):
-        previous = engine.get_target()
-        assert engine.set_target() != previous
+def test_help_gets_stronger_after_three_uses(engine):
+    assert [engine.hint_strength(n) for n in range(5)] == ["soft"] * 3 + ["strong"] * 2
 
 
-def test_clock_starts_on_first_action(engine):
-    assert engine.start_time is None
-    engine.make_guess("")
-    assert engine.start_time is not None
+# --- Daily schedule ---------------------------------------------------------
+
+LAUNCH = date(2026, 1, 1)
 
 
-def test_counters_are_tracked_separately(engine):
-    engine.get_hint()
-    engine.get_hint()
-    engine.get_similar_word()
-    assert engine.hint_count == 2
-    assert engine.similar_click_count == 1
+def test_puzzle_numbers_follow_the_utc_date():
+    schedule = DailySchedule(["apple", "piano", "tiger"], LAUNCH)
+    assert schedule.number_on(LAUNCH) == 1
+    assert schedule.number_on(date(2026, 1, 3)) == 3
+    assert schedule.date_of(3) == date(2026, 1, 3)
+    assert schedule.answer(2) == "piano"
 
 
-def test_each_help_feature_has_its_own_strength(engine):
-    assert engine._determine_hint_strength(engine.hint_count) == "soft"
-    for _ in range(3):
-        engine.get_hint()
-    assert engine._determine_hint_strength(engine.hint_count) == "strong"
-    # Hints used so far don't make Similar Word stronger, and vice versa.
-    assert engine._determine_hint_strength(engine.similar_click_count) == "soft"
+def test_only_released_puzzles_are_open():
+    schedule = DailySchedule(["apple", "piano", "tiger", None], LAUNCH)
+    today = date(2026, 1, 2)  # puzzle #2
+    assert [schedule.is_open(n, today) for n in (0, 1, 2, 3)] == [False, True, True, False]
+    later = date(2026, 3, 1)
+    assert not schedule.is_open(4, later)  # a code that didn't decode
+    assert not schedule.is_open(5, later)  # past the end of the schedule
+
+
+def test_schedule_codes_hide_words_and_need_the_key():
+    codes = [word_code(w, "secret") for w in ("apple", "piano")]
+    assert "apple" not in "".join(codes)
+    vocabulary = {"apple", "piano", "tiger"}
+    assert decode(codes, "secret", vocabulary) == ["apple", "piano"]
+    assert decode(codes, "wrong", vocabulary) == [None, None]
+
+
+def test_next_puzzle_countdown_is_within_a_day():
+    assert 0 <= seconds_until_next_puzzle() <= 24 * 3600
+
+
+# --- Scoring ----------------------------------------------------------------
 
 
 def test_quitting_after_help_scores_less_than_quitting_without():
@@ -131,23 +176,21 @@ def test_quitting_never_beats_a_quick_solve():
     assert best_quit < quick_solve == 100
 
 
-def test_plural_of_the_answer_wins(engine):
-    result = engine.make_guess(TARGET + "s")
-    assert result["is_correct"] is True
-    assert result["guess"] == TARGET + "s"
-    assert result["matched"] == TARGET
-
-
-def test_inflected_guess_counts_as_its_base_word(engine):
-    plain = engine.make_guess("cat")
-    plural = engine.make_guess("Cats")
-    assert plural["valid"] is True
-    assert plural["matched"] == "cat"
-    assert plural["rank"] == plain["rank"]
-    assert plain["matched"] is None
-
-
-def test_unknown_word_is_still_rejected(engine):
-    result = engine.make_guess("xqzzt")
-    assert result["valid"] is False
-    assert result["matched"] is None
+@pytest.mark.parametrize(
+    "rank, label",
+    [
+        (1, "Correct"),
+        (2, "Boiling"),
+        (10, "Boiling"),
+        (11, "Very hot"),
+        (30, "Very hot"),
+        (100, "Hot"),
+        (300, "Warm"),
+        (600, "Cool"),
+        (1000, "Cold"),
+        (1001, "Freezing"),
+        (30000, "Freezing"),
+    ],
+)
+def test_hotness_bands_are_rank_based(rank, label):
+    assert describe_hotness(rank) == label

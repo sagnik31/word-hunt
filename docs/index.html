@@ -12,73 +12,78 @@
   <div class="app">
     <header>
       <h1>Word Hot/Cold Game</h1>
-      <p>Guess the hidden word. We'll tell you how close you are.</p>
+      <p>A new hidden word every day. We'll tell you how close you are.</p>
+      <p class="puzzle-title" id="puzzle-title"></p>
+      <p class="streak" id="streak"></p>
       <p class="status" id="status">Checking server status…</p>
+      <nav class="nav-row">
+        <button type="button" id="today-button" class="nav-button">Today's puzzle</button>
+        <button type="button" id="archive-button" class="nav-button">Past puzzles</button>
+      </nav>
     </header>
 
     <main>
-      <form id="guess-form" autocomplete="off">
-        <label for="guess-input">Your guess:</label>
+      <section id="game">
+        <form id="guess-form" autocomplete="off">
+          <label for="guess-input">Your guess:</label>
 
-        <!-- Row 1: input + Guess -->
-        <div class="input-row">
-          <input
-            type="text"
-            id="guess-input"
-            name="guess"
-            placeholder="Type a common noun (e.g. cat, table)."
-            required
-          />
-          <button type="submit" id="guess-button">Guess</button>
-        </div>
+          <!-- Row 1: input + Guess -->
+          <div class="input-row">
+            <input
+              type="text"
+              id="guess-input"
+              name="guess"
+              placeholder="Type any common word (e.g. cat, run)."
+              required
+            />
+            <button type="submit" id="guess-button">Guess</button>
+          </div>
 
-        <!-- Row 2: Similar Word + Hint -->
-        <div class="action-row">
-          <button type="button" id="similar-word-button" class="action-button">
-            Similar Word
+          <!-- Row 2: Similar Word + Hint -->
+          <div class="action-row">
+            <button type="button" id="similar-word-button" class="action-button">
+              Similar Word
+            </button>
+            <button type="button" id="hint-button" class="action-button">
+              Hint
+            </button>
+          </div>
+
+          <!-- Row 3: Quit centered -->
+          <div class="quit-row">
+            <button type="button" id="quit-button" class="action-button quit-button">
+              Quit
+            </button>
+          </div>
+        </form>
+
+        <section id="result" class="result hidden">
+          <h2>Result</h2>
+          <p id="result-text"></p>
+          <p id="score-text" class="score-text"></p>
+          <p id="next-puzzle" class="next-puzzle hidden"></p>
+          <button type="button" id="play-past-button" class="play-again-button hidden">
+            Play past puzzles
           </button>
-          <button type="button" id="hint-button" class="action-button">
-            Hint
-          </button>
-        </div>
+        </section>
 
-        <!-- Row 3: Quit centered -->
-        <div class="quit-row">
-          <button type="button" id="quit-button" class="action-button quit-button">
-            Quit
-          </button>
-        </div>
-      </form>
-
-      <section id="result" class="result hidden">
-        <h2>Result</h2>
-        <p id="result-text"></p>
-        <p id="score-text" class="score-text"></p>
-        <button
-          type="button"
-          id="play-again-button"
-          class="play-again-button hidden"
-        >
-          Play Again
-        </button>
+        <section id="history" class="history hidden">
+          <h2>Guess History</h2>
+          <ul id="history-list"></ul>
+        </section>
       </section>
 
-      <section id="history" class="history hidden">
-        <h2>Guess History</h2>
-        <ul id="history-list"></ul>
+      <section id="archive" class="archive hidden">
+        <h2>Past puzzles</h2>
+        <p class="archive-note">
+          Only puzzles solved on their own day count towards your streak.
+        </p>
+        <ul id="archive-list"></ul>
       </section>
     </main>
 
     <footer>
-      <p>
-        Backend:
-        <code>/health</code>,
-        <code>/guess</code>,
-        <code>/similar_word</code>,
-        <code>/hint</code>,
-        <code>/quit</code>
-        on Render • Frontend: GitHub Pages
-      </p>
+      <p>New puzzle every day at midnight UTC • Progress is saved in this browser</p>
     </footer>
   </div>
 

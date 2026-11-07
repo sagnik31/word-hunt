@@ -1,6 +1,6 @@
 # Word Hunt
 
-A word-guessing game where the only clue is meaning. The server picks a secret noun; you guess words and are told how semantically close each guess is, measured by cosine similarity between GloVe word embeddings. Every guess is ranked against the full vocabulary of about 31,000 words, so you can feel your way from "Freezing" to "Boiling" until you land on the answer. The word lists come from the Brysbaert, Warriner & Kuperman (2014) concreteness ratings (see [How it works](#how-it-works)).
+A daily word-guessing game where the only clue is meaning. Every day at midnight UTC there's a new secret noun, the same for everyone; you guess words and are told how semantically close each guess is, measured by cosine similarity between GloVe word embeddings. Every guess is ranked against the full vocabulary of about 31,000 words, so you can feel your way from "Freezing" to "Boiling" until you land on the answer. The word lists come from the Brysbaert, Warriner & Kuperman (2014) concreteness ratings (see [How it works](#how-it-works)).
 
 **Play it:** [sagnik31.github.io/word-hunt](https://sagnik31.github.io/word-hunt/)
 
@@ -14,19 +14,22 @@ The backend runs on Render's free tier and sleeps when idle, so the first reques
 4. Proper nouns are never accepted: no names, places, brands, days or months.
 5. If you get stuck, **Hint** or **Similar Word** reveals a word ranked closer than your best guess so far. Each use costs points.
 6. **Quit** at any time to reveal the answer and receive partial credit.
+7. Solve each day's puzzle on its day to build a **streak**. **Past puzzles** lists every earlier day; you can play any of them, but they don't count towards your streak.
 
-The answer is always an everyday, picturable noun such as `toothpaste`, `magnet` or `yogurt`, drawn from a curated list of about 2,700 words.
+Your progress (guesses, help used, results and streak) is saved in your browser, so you can close the tab and pick up where you left off. It doesn't follow you to another browser or device.
 
-Temperature labels are based on the guess's percentile rank:
+The answer is always an everyday, picturable noun such as `toothpaste`, `magnet` or `yogurt`, drawn from a curated list of about 2,500 words.
 
-| Label    | Percentile |
+Temperature labels are based on the guess's rank (the answer is rank 1):
+
+| Label    | Rank       |
 | -------- | ---------- |
-| Boiling  | top 1%     |
-| Very hot | top 5%     |
-| Hot      | top 10%    |
-| Warm     | top 25%    |
-| Cool     | top 50%    |
-| Cold     | top 75%    |
+| Boiling  | 2–10       |
+| Very hot | 11–30      |
+| Hot      | 31–100     |
+| Warm     | 101–300    |
+| Cool     | 301–600    |
+| Cold     | 601–1,000  |
 | Freezing | the rest   |
 
 ### Scoring
@@ -61,16 +64,18 @@ The CSV isn't committed. To rebuild the lists, download it to `data/raw/concrete
 [`backend/scripts/build_word_lists.py`](backend/scripts/build_word_lists.py) builds three files from it:
 
 - `data/guess_words.txt`: every single word in the dataset that has a GloVe vector and isn't a proper noun (about 31,000).
-- `data/target_words.txt`: the possible answers. These are nouns known by at least 95% of people, with a concreteness rating of at least 4.0 out of 5 and a subtitle frequency of at least 50, minus plurals and the words in `data/target_blocklist.txt` (about 2,700).
+- `data/target_words.txt`: the possible answers. These are nouns known by at least 95% of people, with a concreteness rating of at least 4.0 out of 5 and a subtitle frequency of at least 50, minus plurals and the words in `data/target_blocklist.txt` (about 2,500).
 - `data/word_forms.txt`: about 22,000 plurals and verb forms that aren't guess words themselves, each mapped to its base word (`cats` → `cat`). The rules live in [`backend/utils/word_forms.py`](backend/utils/word_forms.py).
 
 A word counts as a proper noun when the WordNet dictionary only knows it with a capital letter (`Monday`, `Kleenex`), or when it's listed in `data/proper_nouns.txt`.
 
 **Embeddings.** [`backend/scripts/extract_embeddings.py`](backend/scripts/extract_embeddings.py) looks up a 300-dimensional GloVe vector for every guess word, scales each to unit length, and saves them as float16 in `data/embeddings.npz` (about 18 MB).
 
-**Backend.** At startup, the game engine loads the embeddings and word lists once (about 115 MB of memory). When a round starts, it picks an answer from the target list and ranks every guess word by cosine similarity to it, which takes a few milliseconds. A guess is then a dictionary lookup.
+**Daily schedule.** [`backend/scripts/build_schedule.py`](backend/scripts/build_schedule.py) shuffles the answers into `data/daily_schedule.txt`, where line N is puzzle #N and puzzle #1 is `LAUNCH_DATE` in [`backend/config.py`](backend/config.py). Each line is a keyed hash (HMAC) of the answer rather than the word, because the repository is public: without the schedule key, nobody can tell which word a line stands for. Rerunning the script never changes today's or earlier puzzles; it drops future words that are no longer answers and appends new ones, so no word repeats.
 
-**Frontend.** Plain HTML, CSS and JavaScript ES modules with no build step, served from [`docs/`](docs/) by GitHub Pages. It talks to the backend over a small REST API.
+**Backend.** At startup, the game engine loads the embeddings and word forms once, and decodes the schedule with the key (about 115 MB of memory). The server keeps no player state: every request names a puzzle number, and the server refuses puzzles that haven't been released yet. Ranking every guess word against an answer takes a few milliseconds and is cached for recent answers. Scores are computed from the stats the browser sends (time, help used, best rank).
+
+**Frontend.** Plain HTML, CSS and JavaScript ES modules with no build step, served from [`docs/`](docs/) by GitHub Pages. It talks to the backend over a small REST API and keeps each player's progress in `localStorage`.
 
 ### Tech stack
 
@@ -117,7 +122,19 @@ Then install the dependencies. `requirements-dev.txt` includes the server depend
 pip install -r requirements-dev.txt
 ```
 
-### 2. Start the backend
+### 2. Get a schedule key
+
+The server needs the schedule key to read `data/daily_schedule.txt`. It reads the `WORDHUNT_SCHEDULE_KEY` environment variable, or a `schedule.key` file at the repository root (git-ignored).
+
+Without the project's key, build your own schedule with a new key in a separate file:
+
+```bash
+WORDHUNT_SCHEDULE_PATH=data/my_schedule.txt python backend/scripts/build_schedule.py --new-key
+```
+
+Then start the server with the same `WORDHUNT_SCHEDULE_PATH` set.
+
+### 3. Start the backend
 
 From the repository root:
 
@@ -125,9 +142,9 @@ From the repository root:
 uvicorn backend.api:app --reload --port 8000
 ```
 
-The API is now at `http://localhost:8000`, with interactive documentation at `http://localhost:8000/docs`. On Windows, `run_backend.bat` does the same thing using the `.venv` environment. The server prints the current answer at startup (`[startup] Target word set to: ...`), which is handy for testing.
+The API is now at `http://localhost:8000`, with interactive documentation at `http://localhost:8000/docs`. On Windows, `run_backend.bat` does the same thing using the `.venv` environment. The server prints today's answer at startup (`[startup] Today's answer: ...`), which is handy for testing.
 
-### 3. Point the frontend at your local backend
+### 4. Point the frontend at your local backend
 
 [`docs/js/config.js`](docs/js/config.js) points at the deployed backend. Don't commit a localhost URL there. Instead, copy `docs/` to a scratch folder and change `API_BASE_URL` in the copy:
 
@@ -137,7 +154,7 @@ export const CONFIG = {
 };
 ```
 
-### 4. Serve the frontend
+### 5. Serve the frontend
 
 ES modules cannot be loaded from `file://` URLs, so serve the folder over HTTP. In a second terminal:
 
@@ -163,11 +180,14 @@ Use `python -m pytest` rather than plain `pytest`; the former puts the repositor
 
 | Method | Endpoint        | Description                                                         |
 | ------ | --------------- | ------------------------------------------------------------------- |
-| GET    | `/health`       | Reports whether the game engine loaded successfully.                |
-| POST   | `/guess`        | Body: `{"word": "..."}`. Returns rank, similarity, percentile and temperature label. `matched` holds the base word when a plural or verb form was scored as it (`cats` → `cat`). Includes the score and starts a new round on a correct guess. |
-| POST   | `/hint`         | Returns a word ranked closer than the player's best so far.         |
-| POST   | `/similar_word` | Same as `/hint`, tracked separately for scoring and hint strength.  |
-| POST   | `/quit`         | Reveals the answer, returns the partial score, and starts a new round. |
+| GET    | `/health`       | Reports whether the engine and the schedule loaded.                 |
+| GET    | `/today`        | Today's puzzle number, the UTC date, the launch date and the seconds until the next puzzle. Every puzzle from 1 to today's is playable. |
+| POST   | `/guess`        | Body: `{"puzzle": 7, "word": "...", "stats": {...}}`. Returns rank, similarity, percentile and temperature label. `matched` holds the base word when a plural or verb form was scored as it (`cats` → `cat`). Includes the score on a correct guess, computed from `stats`. |
+| POST   | `/hint`         | Body: `{"puzzle": 7, "best_rank": 120, "times_used": 0}`. Returns a word ranked closer than `best_rank`; it gets stronger after 3 uses. |
+| POST   | `/similar_word` | Same as `/hint`; the browser counts its uses separately.            |
+| POST   | `/quit`         | Body: `{"puzzle": 7, "stats": {...}}`. Reveals the answer and returns the partial score. |
+
+`stats` is the player's progress on that puzzle: `elapsed_seconds` since the first guess or help, `hint_count`, `similar_count` and `best_rank`. A puzzle that hasn't been released yet returns 404.
 
 Full request and response schemas are available at `/docs` while the server is running.
 
@@ -200,7 +220,7 @@ python backend/scripts/extract_embeddings.py
 
 The first script writes the three word-list files and prints how many words each filter removed. The second writes `data/embeddings.npz`.
 
-To change which words can be the answer, edit `data/target_blocklist.txt` (one word per line) and rerun the first script. To ban a proper noun that slipped through, add it to `data/proper_nouns.txt`. The filter thresholds are constants at the top of `build_word_lists.py`.
+To change which words can be the answer, edit `data/target_blocklist.txt` (one word per line), rerun the first script, then run `python backend/scripts/build_schedule.py` to update the future puzzles. To ban a proper noun that slipped through, add it to `data/proper_nouns.txt`. The filter thresholds are constants at the top of `build_word_lists.py`.
 
 `generate_big_hints.py` writes riddle-style hints for the first 100 target words to `data/big_hints.json`, using a locally running Ollama model. The game doesn't use these hints yet.
 
@@ -210,9 +230,10 @@ To change which words can be the answer, edit `data/target_blocklist.txt` (one w
 word-hunt/
 ├── backend/
 │   ├── api.py            FastAPI app, startup and CORS
-│   ├── game.py           WordGameEngine: loads data, picks answers, ranks words
+│   ├── game.py           WordGameEngine: loads data, ranks words against an answer
+│   ├── daily.py          Daily schedule: puzzle numbers, dates, decoding answers
 │   ├── scoring.py        Final score rules
-│   ├── config.py         File paths and allowed CORS origins
+│   ├── config.py         File paths, launch date, schedule key, CORS origins
 │   ├── schemas.py        Pydantic request and response models
 │   ├── routes/           One router per endpoint
 │   ├── actions/          Guess and hint logic
@@ -222,6 +243,7 @@ word-hunt/
 ├── data/
 │   ├── guess_words.txt      Words you can guess
 │   ├── target_words.txt     Possible answers
+│   ├── daily_schedule.txt   Which answer on which day (hashed)
 │   ├── word_forms.txt       Plurals and verb forms, mapped to base words
 │   ├── embeddings.npz       GloVe vectors for every guess word
 │   ├── target_blocklist.txt Words that are never the answer (hand-edited)
@@ -234,7 +256,7 @@ word-hunt/
 
 ## Deployment
 
-**Backend (Render).** Create a web service from the repository with build command `bash build.sh` and start command `bash start.sh`. These install `requirements.txt` and run Uvicorn on the port Render provides.
+**Backend (Render).** Create a web service from the repository with build command `bash build.sh` and start command `bash start.sh`. These install `requirements.txt` and run Uvicorn on the port Render provides. Set the `WORDHUNT_SCHEDULE_KEY` environment variable to the schedule key; without it the server starts but `/health` reports `degraded`.
 
 **Frontend (GitHub Pages).** In the repository settings, under Pages, deploy from the `main` branch and the `/docs` folder. Set `API_BASE_URL` in `docs/js/config.js` to the Render service URL, and make sure the Pages origin is listed in `CORS_ORIGINS` in `backend/config.py`.
 
@@ -246,11 +268,11 @@ word-hunt/
 
 ## Limitations and roadmap
 
-- **One game per server.** The backend holds a single game in memory, so everyone connected plays the same word and shares the same counters. Per-player sessions are the next structural change.
-- **Generous temperature labels.** With ~31,000 words, the top 5% ("Very hot") covers about 1,500 words, so a guess can be labelled "Very hot" while still far from the answer.
+- **Progress lives in the browser.** Clearing site data resets streaks, and progress doesn't sync between devices.
+- **Scores trust the browser.** The score uses the time and help counts the browser reports, so a determined player could fake them. That only matters once there's a leaderboard.
 - **Riddle hints.** LLM-generated riddle hints exist for 100 words but are not wired into the game yet.
 - **Under consideration:** leaderboards, timed and category-based modes, and UI polish.
 
 ## License
 
-Released under the MIT License.
+Released under the MIT License. See [LICENSE](LICENSE).

@@ -1,4 +1,4 @@
-# scoring.py — Updated percentile-based hotness
+# scoring.py — percentile (used for the score) and rank-based temperature labels
 
 
 def compute_percentile(rank: int, total: int) -> float:
@@ -11,25 +11,25 @@ def compute_percentile(rank: int, total: int) -> float:
     return 100.0 * (1.0 - (rank - 1) / total_others)
 
 
-def describe_hotness(rank: int, total: int) -> str:
-    """
-    Hotness categories based on percentile bands.
-    """
+# Temperature bands by rank: (worst rank in the band, label).
+# Fixed ranks rather than percentiles: past ~1,000 the neighbours are mostly
+# unrelated to the answer, so every band sits inside the top 1,000 and
+# everything beyond is "Freezing". The rank number still shows the detail.
+HOTNESS_BANDS = [
+    (10, "Boiling"),
+    (30, "Very hot"),
+    (100, "Hot"),
+    (300, "Warm"),
+    (600, "Cool"),
+    (1000, "Cold"),
+]
+
+
+def describe_hotness(rank: int) -> str:
+    """Temperature label for a guess's rank (rank 1 is the answer)."""
     if rank == 1:
         return "Correct"
-
-    percentile = compute_percentile(rank, total)
-
-    if percentile >= 99.0:
-        return "Boiling"
-    if percentile >= 95.0:
-        return "Very hot"
-    if percentile >= 90.0:
-        return "Hot"
-    if percentile >= 75.0:
-        return "Warm"
-    if percentile >= 50.0:
-        return "Cool"
-    if percentile >= 25.0:
-        return "Cold"
+    for max_rank, label in HOTNESS_BANDS:
+        if rank <= max_rank:
+            return label
     return "Freezing"

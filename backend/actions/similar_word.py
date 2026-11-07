@@ -1,9 +1,12 @@
-# similar_word.py — Updated smart hint logic
+# similar_word.py — pick a word ranked better than the player's best
 
 import random
-from typing import List, Tuple, Dict, Optional, Literal
+from typing import TYPE_CHECKING, Dict, Literal, Optional
 
 from backend.utils.scoring import compute_percentile, describe_hotness
+
+if TYPE_CHECKING:
+    from backend.game import Ranking
 
 HintStrength = Literal["soft", "strong"]
 
@@ -50,8 +53,7 @@ def _choose_hint_index(
 
 
 def get_similar_word(
-    target_similarity_list: List[Tuple[str, float]],
-    target_total: int,
+    ranking: "Ranking",
     best_rank_overall: Optional[int],
     hint_strength: HintStrength = "strong",
 ) -> Dict[str, object]:
@@ -60,26 +62,21 @@ def get_similar_word(
       word, rank, total, similarity, percentile, hotness
     Ensures hint rank improves the user's best rank when possible.
     """
-    if not target_similarity_list:
-        raise RuntimeError("No similarity data for this target.")
+    n_others = len(ranking.order)
+    if not n_others:
+        raise RuntimeError("No similarity data for this answer.")
 
-    n_others = len(target_similarity_list)
-    # Ranks count the target as #1, so neighbour index i has rank i + 2;
+    # Ranks count the answer as #1, so neighbour position p has rank p + 2;
     # the index chooser works in 1-based neighbour positions (rank - 1).
     best_position = None if best_rank_overall is None else best_rank_overall - 1
     idx = _choose_hint_index(n_others, best_position, hint_strength)
-
-    word, sim = target_similarity_list[idx]
-    rank = idx + 2
-
-    percentile = compute_percentile(rank, target_total)
-    hotness = describe_hotness(rank, target_total)
+    word, sim, rank = ranking.neighbour(idx)
 
     return {
         "word": word,
         "rank": rank,
-        "total": target_total,
+        "total": ranking.total,
         "similarity": sim,
-        "percentile": percentile,
-        "hotness": hotness,
+        "percentile": compute_percentile(rank, ranking.total),
+        "hotness": describe_hotness(rank),
     }
