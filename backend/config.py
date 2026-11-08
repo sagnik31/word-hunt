@@ -16,8 +16,8 @@ TARGET_WORDS_PATH = DATA_DIR / "target_words.txt"
 WORD_FORMS_PATH = DATA_DIR / "word_forms.txt"
 
 # Daily puzzle. Puzzle #1 is LAUNCH_DATE; a new puzzle starts at midnight UTC.
-# Set LAUNCH_DATE to the go-live day before the first deployment.
-LAUNCH_DATE = date(2026, 11, 1)
+# Puzzle #1 went live on this day. Changing it shifts every puzzle's date.
+LAUNCH_DATE = date(2026, 11, 8)
 
 # Built by backend/scripts/build_schedule.py. One scrambled code per line, so
 # the public repo doesn't give away future answers; decoding needs the key.
