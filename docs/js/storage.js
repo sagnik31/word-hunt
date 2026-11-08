@@ -30,6 +30,8 @@ function newGame() {
         entries: [], // guesses, suggestions and the final result, oldest first
         hintCount: 0,
         similarCount: 0,
+        clues: [], // clue texts shown so far, vaguest first
+        clueTotal: null, // how many clues the puzzle has, once the server says
         bestRank: null,
         startedAt: null, // ms timestamp of the first guess or help
         status: "playing", // "playing" | "won" | "quit"
@@ -44,7 +46,8 @@ export class Progress {
     }
 
     game(puzzle) {
-        return this.data.games[puzzle] || newGame();
+        // Older saves lack newer fields, so fill them in from a fresh game.
+        return { ...newGame(), ...this.data.games[puzzle] };
     }
 
     // Has the player started this puzzle?

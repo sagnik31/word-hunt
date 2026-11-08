@@ -9,6 +9,7 @@ tell which word a code stands for, so future answers stay hidden.
 
 import hashlib
 import hmac
+import json
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional
@@ -77,3 +78,16 @@ class DailySchedule:
         if word is None:
             raise KeyError(f"No answer scheduled for puzzle #{number}")
         return word
+
+
+def load_clues(path: Path, key: str, answers: Iterable[Optional[str]]) -> Dict[str, List[str]]:
+    """Clues for each answer. The file is keyed by word codes, like the schedule."""
+    if not path.exists():
+        return {}
+    with open(path, "r", encoding="utf-8") as fh:
+        by_code: Dict[str, List[str]] = json.load(fh)
+    clues = {}
+    for word in answers:
+        if word and word_code(word, key) in by_code:
+            clues[word] = by_code[word_code(word, key)]
+    return clues

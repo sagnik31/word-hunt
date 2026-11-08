@@ -24,6 +24,11 @@ class HelpRequest(BaseModel):
     times_used: int = Field(0, ge=0)  # earlier uses of this feature on this puzzle
 
 
+class ClueRequest(BaseModel):
+    puzzle: int
+    clues_used: int = Field(0, ge=0)  # clues already shown on this puzzle
+
+
 class QuitRequest(BaseModel):
     puzzle: int
     stats: PlayerStats = Field(default_factory=PlayerStats)
@@ -63,6 +68,12 @@ class SuggestionResponse(BaseModel):
     similarity: float
     percentile: float
     hotness: str
+
+
+class ClueResponse(BaseModel):
+    clue: str
+    number: int  # 1 is the vaguest
+    total: int
 
 
 class QuitResponse(BaseModel):

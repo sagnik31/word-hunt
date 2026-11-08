@@ -1,4 +1,4 @@
 # Offline data scripts in backend/scripts/ (not needed to run the server)
-numpy      # extract_embeddings.py
-nltk       # build_word_lists.py; also run: python -m nltk.downloader wordnet
-requests   # generate_big_hints.py
+numpy      # extract_embeddings.py, generate_clues.py
+nltk       # build_word_lists.py, generate_clues.py; also run: python -m nltk.downloader wordnet
+requests   # generate_clues.py (talks to Ollama)

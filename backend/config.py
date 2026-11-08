@@ -27,6 +27,10 @@ SCHEDULE_PATH = Path(os.environ.get("WORDHUNT_SCHEDULE_PATH", DATA_DIR / "daily_
 # or a git-ignored schedule.key file at the repo root (your machine).
 SCHEDULE_KEY_FILE = BASE_DIR / "schedule.key"
 
+# Built by backend/scripts/generate_clues.py: three clues per answer, vague to
+# strong, keyed by the same codes as the schedule so the file names no words.
+CLUES_PATH = Path(os.environ.get("WORDHUNT_CLUES_PATH", DATA_DIR / "clues.json"))
+
 
 def schedule_key() -> Optional[str]:
     key = os.environ.get("WORDHUNT_SCHEDULE_KEY", "").strip()

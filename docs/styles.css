@@ -95,12 +95,30 @@ button:disabled {
 }
 
 .result,
-.history {
+.history,
+.clues {
   margin-top: 1.5rem;
 }
 
+.clue-note {
+  margin: 0.4rem 0 0;
+  font-size: 0.8rem;
+  color: #9ca3af;
+  text-align: center;
+}
+
+#clue-list {
+  margin: 0.5rem 0 0;
+  padding-left: 1.4rem;
+}
+
+#clue-list li {
+  margin-bottom: 0.3rem;
+  color: #fde68a;
+}
+
 .hidden {
-  display: none;
+  display: none !important; /* wins over any display set later */
 }
 
 .result-text-error {
@@ -131,14 +149,14 @@ button:disabled {
   color: #d1d5db;
 }
 
-/* Row 2: Similar Word + Hint */
+/* Row 2: Similar Word + Hint + Clue */
 .action-row {
   margin-top: 0.75rem;
   display: flex;
   gap: 0.5rem;
 }
 
-/* Make both row-2 buttons equal width and same size */
+/* Row-2 buttons share the width equally */
 .action-row .action-button {
   flex: 1;
   text-align: center;

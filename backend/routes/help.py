@@ -1,9 +1,11 @@
-from fastapi import APIRouter, Depends
+from typing import Dict, List
+
+from fastapi import APIRouter, Depends, HTTPException
 
 from backend.daily import DailySchedule
-from backend.dependencies import get_engine, get_schedule, open_answer
+from backend.dependencies import get_clues, get_engine, get_schedule, open_answer
 from backend.game import WordGameEngine
-from backend.schemas import HelpRequest, SuggestionResponse
+from backend.schemas import ClueRequest, ClueResponse, HelpRequest, SuggestionResponse
 
 router = APIRouter()
 
@@ -33,3 +35,24 @@ def similar_word_endpoint(
     schedule: DailySchedule = Depends(get_schedule),
 ) -> SuggestionResponse:
     return _suggest(payload, engine, schedule)
+
+
+# Clue: the next of the answer's written clues, vaguest first. The browser
+# decides when the player is stuck enough to unlock one.
+@router.post("/clue", response_model=ClueResponse)
+def clue_endpoint(
+    payload: ClueRequest,
+    schedule: DailySchedule = Depends(get_schedule),
+    clues: Dict[str, List[str]] = Depends(get_clues),
+) -> ClueResponse:
+    answer = open_answer(schedule, payload.puzzle)
+    answer_clues = clues.get(answer)
+    if not answer_clues:
+        raise HTTPException(status_code=404, detail="This puzzle has no clues.")
+    if payload.clues_used >= len(answer_clues):
+        raise HTTPException(status_code=409, detail="No clues left.")
+    return ClueResponse(
+        clue=answer_clues[payload.clues_used],
+        number=payload.clues_used + 1,
+        total=len(answer_clues),
+    )

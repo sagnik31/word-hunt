@@ -15,7 +15,11 @@ export class ApiClient {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),
         });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) {
+            const err = new Error(`HTTP ${res.status}`);
+            err.status = res.status;
+            throw err;
+        }
         return res.json();
     }
 
@@ -38,6 +42,11 @@ export class ApiClient {
 
     getHint(puzzle, bestRank, timesUsed) {
         return this.post("/hint", { puzzle, best_rank: bestRank, times_used: timesUsed });
+    }
+
+    // The next written clue; 404 when the puzzle has none, 409 when used up.
+    getClue(puzzle, cluesUsed) {
+        return this.post("/clue", { puzzle, clues_used: cluesUsed });
     }
 
     quitGame(puzzle, stats) {

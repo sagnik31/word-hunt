@@ -10,6 +10,7 @@ request names a puzzle number, and the browser sends the player's progress.
   - POST /guess
   - POST /similar_word    (suggest a hot word)
   - POST /hint            (suggest a hot word)
+  - POST /clue            (the next written clue)
   - POST /quit            (reveal the answer)
 
 Run locally (from the repo root):
@@ -22,8 +23,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.config import CORS_ORIGINS, LAUNCH_DATE, SCHEDULE_PATH, schedule_key
-from backend.daily import DailySchedule
+from backend.config import CLUES_PATH, CORS_ORIGINS, LAUNCH_DATE, SCHEDULE_PATH, schedule_key
+from backend.daily import DailySchedule, load_clues
 from backend.game import WordGameEngine
 from backend.routes import guess, health, help, quit, today
 
@@ -45,11 +46,14 @@ def load_schedule(engine: WordGameEngine) -> DailySchedule:
 async def lifespan(app: FastAPI):
     app.state.engine = None
     app.state.schedule = None
+    app.state.clues = {}
     try:
         print("[startup] Initializing WordGameEngine...")
         app.state.engine = WordGameEngine()
         app.state.schedule = load_schedule(app.state.engine)
         schedule = app.state.schedule
+        app.state.clues = load_clues(CLUES_PATH, schedule_key(), schedule.words)
+        print(f"[startup] Clues for {len(app.state.clues)} of {len(schedule.words)} puzzles")
         number = schedule.current()
         print(f"[startup] {len(schedule.words)} puzzles scheduled; today is #{number}")
         if schedule.is_open(number):
@@ -86,5 +90,5 @@ app.include_router(quit.router)
 def root():
     return {
         "message": "Word Hot-Cold Game API",
-        "endpoints": ["/health", "/today", "/guess", "/similar_word", "/hint", "/quit", "/docs"],
+        "endpoints": ["/health", "/today", "/guess", "/similar_word", "/hint", "/clue", "/quit", "/docs"],
     }

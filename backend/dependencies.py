@@ -1,3 +1,5 @@
+from typing import Dict, List
+
 from fastapi import HTTPException, Request
 
 from backend.daily import DailySchedule
@@ -16,6 +18,11 @@ def get_schedule(request: Request) -> DailySchedule:
     if schedule is None:
         raise HTTPException(status_code=503, detail="Daily schedule not loaded.")
     return schedule
+
+
+def get_clues(request: Request) -> Dict[str, List[str]]:
+    """Clues by answer word; empty when the clues file is missing."""
+    return getattr(request.app.state, "clues", None) or {}
 
 
 def open_answer(schedule: DailySchedule, puzzle: int) -> str:

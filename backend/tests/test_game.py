@@ -194,3 +194,15 @@ def test_quitting_never_beats_a_quick_solve():
 )
 def test_hotness_bands_are_rank_based(rank, label):
     assert describe_hotness(rank) == label
+
+
+def test_clues_file_is_keyed_by_word_codes(tmp_path):
+    import json
+
+    from backend.daily import load_clues, word_code
+
+    path = tmp_path / "clues.json"
+    path.write_text(json.dumps({word_code("apple", "k"): ["a", "b", "c"]}))
+    assert load_clues(path, "k", ["apple", "piano", None]) == {"apple": ["a", "b", "c"]}
+    assert load_clues(path, "other key", ["apple"]) == {}
+    assert load_clues(tmp_path / "missing.json", "k", ["apple"]) == {}

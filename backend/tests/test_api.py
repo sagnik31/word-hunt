@@ -8,6 +8,7 @@ from backend.daily import DailySchedule, today_utc
 
 # Yesterday's puzzle (#1) is "piano", today's (#2) is "apple", #3 is tomorrow.
 WORDS = ["piano", "apple", "tiger"]
+APPLE_CLUES = ["It grows on trees.", "It can be red or green.", "Keeps the doctor away, they say."]
 
 
 @pytest.fixture(scope="module")
@@ -16,6 +17,7 @@ def client():
     # The real schedule is swapped for a known one, so no key is needed.
     with TestClient(app) as c:
         app.state.schedule = DailySchedule(WORDS, today_utc() - timedelta(days=1))
+        app.state.clues = {"apple": APPLE_CLUES}
         yield c
 
 
@@ -93,3 +95,20 @@ def test_bad_stats_are_rejected(client):
         "/guess", json={"puzzle": 2, "word": "dog", "stats": {"hint_count": -1}}
     )
     assert response.status_code == 422
+
+
+def test_clues_come_one_at_a_time_vaguest_first(client):
+    for used, clue in enumerate(APPLE_CLUES):
+        data = client.post("/clue", json={"puzzle": 2, "clues_used": used}).json()
+        assert data == {"clue": clue, "number": used + 1, "total": 3}
+    assert client.post("/clue", json={"puzzle": 2, "clues_used": 3}).status_code == 409
+
+
+def test_puzzle_without_clues_says_so(client):
+    response = client.post("/clue", json={"puzzle": 1, "clues_used": 0})
+    assert response.status_code == 404
+    assert response.json()["detail"] == "This puzzle has no clues."
+
+
+def test_clues_for_future_puzzles_are_refused(client):
+    assert client.post("/clue", json={"puzzle": 3, "clues_used": 0}).status_code == 404

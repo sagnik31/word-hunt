@@ -39,7 +39,7 @@
             <button type="submit" id="guess-button">Guess</button>
           </div>
 
-          <!-- Row 2: Similar Word + Hint -->
+          <!-- Row 2: Similar Word + Hint + Clue -->
           <div class="action-row">
             <button type="button" id="similar-word-button" class="action-button">
               Similar Word
@@ -47,7 +47,11 @@
             <button type="button" id="hint-button" class="action-button">
               Hint
             </button>
+            <button type="button" id="clue-button" class="action-button">
+              Clue
+            </button>
           </div>
+          <p id="clue-note" class="clue-note"></p>
 
           <!-- Row 3: Quit centered -->
           <div class="quit-row">
@@ -56,6 +60,11 @@
             </button>
           </div>
         </form>
+
+        <section id="clues" class="clues hidden">
+          <h2>Clues</h2>
+          <ol id="clue-list"></ol>
+        </section>
 
         <section id="result" class="result hidden">
           <h2>Result</h2>

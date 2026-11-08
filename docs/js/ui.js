@@ -11,6 +11,33 @@ const SUGGESTION_LABELS = {
     hint: "🧠 Hint",
 };
 
+// Clues unlock when the player is stuck: the first after CLUE_FIRST_AFTER
+// guesses, and each one only once the last CLUE_STUCK_RUN guesses since the
+// previous clue brought no new best rank.
+const CLUE_FIRST_AFTER = 10;
+const CLUE_STUCK_RUN = 5;
+
+function guessesUntilClue(game) {
+    let best = null;
+    let guesses = 0;
+    let run = 0; // guesses in a row, since the last clue, with no new best
+    for (const entry of game.entries) {
+        if (entry.type === "clue") {
+            run = 0;
+            continue;
+        }
+        if (typeof entry.rank !== "number") continue; // invalid guesses don't count
+        const improved = best === null || entry.rank < best;
+        if (improved) best = entry.rank;
+        if (entry.type === "guess") {
+            guesses += 1;
+            run = improved ? 0 : run + 1;
+        }
+    }
+    const first = game.clues.length === 0 ? Math.max(0, CLUE_FIRST_AFTER - guesses) : 0;
+    return Math.max(first, CLUE_STUCK_RUN - run);
+}
+
 // '"cats" (as "cat")' when a plural or verb form counted as its base word.
 function describeGuess(result) {
     if (result.matched && result.matched !== result.guess) {
@@ -28,6 +55,9 @@ function describeEntry(entry) {
     if (entry.type in SUGGESTION_LABELS) {
         return `${SUGGESTION_LABELS[entry.type]}: try "${entry.word}" — rank #${entry.rank}/${entry.total
             }, sim=${entry.similarity.toFixed(3)}, ${entry.hotness}`;
+    }
+    if (entry.type === "clue") {
+        return `🧩 Clue ${entry.number}/${entry.total}: ${entry.clue}`;
     }
     if (entry.type === "quit") {
         return withScore(`🚪 You quit. The answer was "${entry.answer}".`, entry.score);
@@ -77,10 +107,16 @@ export class GameUI {
         this.similarWordButton = $("similar-word-button");
         this.hintButton = $("hint-button");
         this.quitButton = $("quit-button");
+        this.clueButton = $("clue-button");
+        this.clueNote = $("clue-note");
+        this.cluesSection = $("clues");
+        this.clueList = $("clue-list");
+        this.clueBusy = false; // a clue request is on its way
 
         this.formEl.addEventListener("submit", (e) => this.handleGuessSubmit(e));
         this.similarWordButton.addEventListener("click", () => this.handleSimilarWordClick());
         this.hintButton.addEventListener("click", () => this.handleHintClick());
+        this.clueButton.addEventListener("click", () => this.handleClueClick());
         this.quitButton.addEventListener("click", () => this.handleQuitClick());
         this.playPastButton.addEventListener("click", () => this.goTo("archive"));
         $("archive-button").addEventListener("click", () => this.goTo("archive"));
@@ -148,6 +184,7 @@ export class GameUI {
         this.historyList.textContent = "";
         this.historySection.classList.toggle("hidden", this.game.entries.length === 0);
         this.game.entries.forEach((entry) => this.addToHistory(entry));
+        this.renderClues();
 
         this.resultSection.classList.add("hidden");
         this.nextPuzzleEl.classList.add("hidden");
@@ -293,8 +330,41 @@ export class GameUI {
         }
         this.nextPuzzleEl.classList.toggle("hidden", this.puzzle !== this.today);
         this.playPastButton.classList.remove("hidden");
+        this.renderClueButton(); // clears the clue note
         this.renderStreak();
         this.tick();
+    }
+
+    renderClues() {
+        this.clueList.textContent = "";
+        for (const clue of this.game.clues) {
+            const li = document.createElement("li");
+            li.textContent = clue;
+            this.clueList.appendChild(li);
+        }
+        this.cluesSection.classList.toggle("hidden", this.game.clues.length === 0);
+        this.renderClueButton();
+    }
+
+    renderClueButton() {
+        const g = this.game;
+        let note = "";
+        let ready = false;
+        if (!this.gameOver) {
+            if (g.clueTotal === 0) {
+                note = "This puzzle has no clues.";
+            } else if (g.clueTotal !== null && g.clues.length >= g.clueTotal) {
+                note = "That was the last clue.";
+            } else {
+                const needed = guessesUntilClue(g);
+                ready = needed === 0;
+                note = ready
+                    ? "Stuck? A clue is ready."
+                    : `Stuck? A clue unlocks after ${needed} more guess${needed === 1 ? "" : "es"} without a new best.`;
+            }
+        }
+        this.clueButton.disabled = !ready || this.clueBusy;
+        this.clueNote.textContent = note;
     }
 
     applyHotnessColor(hotness) {
@@ -316,6 +386,7 @@ export class GameUI {
         this.game.entries.push(entry);
         this.save();
         this.addToHistory(entry);
+        this.renderClueButton();
     }
 
     // --- Actions ----------------------------------------------------------
@@ -396,6 +467,38 @@ export class GameUI {
         }
     }
 
+    async handleClueClick() {
+        if (this.gameOver || this.clueBusy || guessesUntilClue(this.game) > 0) return;
+
+        const puzzle = this.puzzle;
+        this.clueBusy = true;
+        this.renderClueButton();
+        this.startClock();
+        try {
+            const data = await this.api.getClue(puzzle, this.game.clues.length);
+            if (puzzle !== this.puzzle) return;
+
+            this.game.clues.push(data.clue);
+            this.game.clueTotal = data.total;
+            this.showResultLine(`🧩 Clue ${data.number}/${data.total}: ${data.clue}`);
+            this.record({ ...data, type: "clue" });
+            this.renderClues();
+        } catch (err) {
+            if (puzzle !== this.puzzle) return;
+            if (err.status === 404 || err.status === 409) {
+                // No clues for this puzzle, or none left: stop offering them.
+                this.game.clueTotal = this.game.clues.length;
+                this.save();
+            } else {
+                console.error("Clue request failed:", err);
+                this.showResultLine("Error fetching a clue from the server. Please try again.", "result-text-error");
+            }
+        } finally {
+            this.clueBusy = false;
+            if (puzzle === this.puzzle) this.renderClueButton();
+        }
+    }
+
     async handleQuitClick() {
         if (this.gameOver) return;
 
@@ -417,7 +520,7 @@ export class GameUI {
     }
 
     disableControls() {
-        for (const el of [this.inputEl, this.guessButton, this.similarWordButton, this.hintButton, this.quitButton]) {
+        for (const el of [this.inputEl, this.guessButton, this.similarWordButton, this.hintButton, this.quitButton, this.clueButton]) {
             el.disabled = true;
         }
     }
@@ -426,5 +529,6 @@ export class GameUI {
         for (const el of [this.inputEl, this.guessButton, this.similarWordButton, this.hintButton, this.quitButton]) {
             el.disabled = false;
         }
+        this.renderClueButton();
     }
 }
