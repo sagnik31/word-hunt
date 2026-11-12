@@ -54,10 +54,7 @@ async def lifespan(app: FastAPI):
         schedule = app.state.schedule
         app.state.clues = load_clues(CLUES_PATH, schedule_key(), schedule.words)
         print(f"[startup] Clues for {len(app.state.clues)} of {len(schedule.words)} puzzles")
-        number = schedule.current()
-        print(f"[startup] {len(schedule.words)} puzzles scheduled; today is #{number}")
-        if schedule.is_open(number):
-            print(f"[startup] Today's answer: {schedule.answer(number)}")
+        print(f"[startup] {len(schedule.words)} puzzles scheduled; today is #{schedule.current()}")
     except Exception as e:
         print(f"[startup] Failed to initialize: {e}")
         traceback.print_exc()

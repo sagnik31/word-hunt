@@ -6,21 +6,33 @@ writer is given a dictionary meaning (WordNet) so it doesn't have to recall
 the facts itself. Of a word's senses it gets the one closest to the word's
 nearest neighbours in the game's embeddings, so the clues describe the same
 meaning the hot-and-cold ranks are built on ("washer" the machine, not the
-person or the seal). It writes the meaning and the strong clue first, then
-the medium and vague ones, so all three stay on that sense.
+person or the seal).
+
+The vague clue isn't written by the model: it's the sense's WordNet parent,
+"A kind of home appliance.", which is always true and always broad. Parents
+that are too narrow, too abstract or not everyday words are skipped, and the
+model writes the vague clue only for the few words with no usable parent.
+The model writes the meaning and the strong clue first, then the medium clue,
+which should restate a detail the dictionary meaning gives, so it has no
+room to invent facts.
 
 Each set is checked three times:
 
 1. Rules: no answer word or a word built from it, no talk of letters,
    spelling or sounds, no names, at most MAX_WORDS words per clue.
-2. Facts: a second model, also given the dictionary meaning, checks each
-   clue for errors. A vague clue that fits other things too is fine.
+2. Facts: a second model, also given the dictionary meaning, checks the
+   model-written clues for errors, the medium one against the meaning.
+   A vague clue that fits other things too is fine.
 3. Solver: the second model sees the clues one at a time (clue 1, then
    1-2, then 1-3, as a player would) and makes 3 guesses each time. Each
    guess is ranked against the answer exactly as the game ranks a player's
    guess. The strong clue must bring the solver to rank STRONG_MAX_RANK or
    better, and none of the 3 guesses from the vague clue alone may be the
-   answer.
+   answer. If a WordNet category gives the word away, the next broader one
+   is tried.
+
+The category words are checked against the concreteness ratings
+(data/raw/concreteness_ratings.csv), so that file is needed.
 
 When a set fails, the writer is told exactly what went wrong (which rule,
 which clue was judged wrong and why, what the solver guessed) and asked to
@@ -37,6 +49,7 @@ which clues belong to which word. That step needs the schedule key.
 """
 
 import argparse
+import csv
 import json
 import random
 import re
@@ -69,6 +82,20 @@ STRONG_MAX_RANK = 10  # "Boiling"
 MAX_SENSES = 6
 NEIGHBOURS = 25  # how many nearest words show which sense the embeddings mean
 SENSE_MARGIN = 0.05  # how much closer a less frequent sense must be to be picked
+RATINGS_PATH = ROOT / "data" / "raw" / "concreteness_ratings.csv"
+# A category word must be one nearly everyone knows ("liquor", not "lipid").
+FAMILIAR_KNOWN = 0.95  # share of raters who knew the word
+FAMILIAR_SUBTLEX = 20  # subtitle frequency count
+MIN_KINDS = 10  # a category must cover at least this many WordNet terms
+MIN_DEPTH = 4  # shallower categories ("object", "communication") say nothing
+# Categories that are true but read oddly as a clue ("A kind of artifact").
+DULL_CATEGORIES = {
+    "artifact.n.01", "instrumentality.n.03", "way.n.06", "molecule.n.01", "unit.n.05",
+    "acquisition.n.02", "indication.n.01", "message.n.02", "framework.n.03", "line.n.02",
+    "mark.n.04", "commodity.n.01", "consumer_goods.n.01", "activity.n.01", "act.n.02",
+    "white_goods.n.01", "transferred_property.n.01",
+    "organism.n.01", "tract.n.01",
+}
 STOPWORDS = set(
     "a an the of or and to in on for by with as at from that which is are be its it any "
     "used into out than can one some who what this these those such".split()
@@ -82,22 +109,29 @@ SYSTEM_PROMPT = (
 
 PROMPT = """Secret word: "{word}"
 Meaning to use: {sense}
-
-Write 3 clues for "{word}" in this meaning only. Fill in the fields in this order:
-- meaning: the meaning above in your own plain words. All three clues must be about it.
+{category}
+Write {count} clues for "{word}" in this meaning only. Fill in the fields in this order:
+- meaning: the meaning above in your own plain words. The clues must all be about it.
 - strong: the clearest description of that meaning, so a player names this exact word and not a close relative of it.
-- medium: one telling detail, true of the word, that narrows it to a handful of words.
-- vague: only the broad category, such as "something found in a kitchen" or "a kind of worker". Dozens of words should fit it. Use no detail from the other two clues.
-
-Rules for the three clues:
+- medium: one detail that the meaning above gives (what it is made of, what it does, what it has or where it is), in your own plain words. Add no fact the meaning doesn't give. It should narrow the word down to a handful of words.
+{vague}
+Rules for the clues:
 - Each is one plain sentence of at most 15 words.
 - Only state what is plainly true of this meaning. If you are not sure of a fact, leave it out.
 - Never use the secret word or any word made from it (plural, verb form, compound).
 - Never mention letters, spelling, word length, sounds or rhymes.
 - No names of people, places, countries, brands, books or films.
 
-Example for the secret word "kettle":
-{{"meaning": "a pot with a spout and handle for boiling water", "strong": "You fill it with water and heat it to make tea.", "medium": "It gets noisy just as it is ready.", "vague": "You will find this in most kitchens."}}"""
+Example for the secret word "kettle" (meaning: a metal pot with a spout and handle, for boiling water):
+{example}"""
+
+VAGUE_FIELD = ('- vague: only the broad category, such as "something found in a kitchen" or '
+               '"a kind of worker". Dozens of words should fit it. Use no detail from the other '
+               'two clues.\n')
+KETTLE = {"meaning": "a metal pot with a spout and a handle for boiling water",
+          "strong": "You fill it with water and heat it to make tea.",
+          "medium": "It is a metal pot with a spout for pouring.",
+          "vague": "You will find this in most kitchens."}
 
 FACT_PROMPT = """Word: "{word}" (meaning: {meaning})
 Clue: "{clue}"
@@ -108,21 +142,21 @@ Check the clue for factual errors about this word.
 
 First say in one short sentence what the clue claims and whether that is right for "{word}". Then give the verdict."""
 
+MEDIUM_FACT_PROMPT = """Word: "{word}"
+Dictionary meaning: {meaning}
+Clue: "{clue}"
+
+Check the clue against the dictionary meaning.
+- It is correct if everything it says is given by the meaning, or is plainly true of every "{word}".
+- It is wrong if it adds a detail that is false, only sometimes true, or about something else.
+
+First say in one short sentence what the clue claims and whether the meaning backs it up. Then give the verdict."""
+
 SOLVER_PROMPT = """Guess the secret English word from these clues:
 {clues}
 
 The secret word is a common noun, verb or adjective. Reply with your 3 best single-word guesses, best first."""
 
-CLUES_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "meaning": {"type": "string"},
-        "strong": {"type": "string"},
-        "medium": {"type": "string"},
-        "vague": {"type": "string"},
-    },
-    "required": ["meaning", "strong", "medium", "vague"],
-}
 FACT_SCHEMA = {
     "type": "object",
     "properties": {"reason": {"type": "string"}, "correct": {"type": "boolean"}},
@@ -189,13 +223,50 @@ def sense_words(synset):
     return words + [part for lemma in lemmas for part in lemma.name().lower().split("_")]
 
 
+def familiar_words():
+    """Words nearly everyone knows, from the concreteness ratings."""
+    if not RATINGS_PATH.exists():
+        sys.exit(f"Missing {RATINGS_PATH}: see 'Rebuilding the data' in the README.")
+    with RATINGS_PATH.open(encoding="utf-8") as f:
+        return {row["Word"].lower() for row in csv.DictReader(f)
+                if float(row["Percent_known"]) >= FAMILIAR_KNOWN
+                and float(row["SUBTLEX"]) >= FAMILIAR_SUBTLEX}
+
+
+def category_clues(synset, word, familiar):
+    """Vague clues from the sense's WordNet parents, nearest first.
+
+    "A kind of home appliance." is always true and always broad, so the
+    model doesn't have to write the vaguest clue. A parent is skipped when it
+    is too narrow (fewer than MIN_KINDS terms under it), too abstract, dull,
+    or has no everyday name that isn't built from the word itself.
+    """
+    clues, seen, level = [], set(), [synset]
+    while level:
+        level = [p for s in level for p in s.hypernyms() if p not in seen]
+        seen.update(level)
+        for parent in level:
+            if parent.min_depth() < MIN_DEPTH or parent.name() in DULL_CATEGORIES:
+                continue
+            if len(set(parent.closure(lambda s: s.hyponyms()))) < MIN_KINDS:
+                continue
+            for lemma in parent.lemmas():
+                parts = lemma.name().split("_")
+                if lemma.name().islower() and all(
+                        p in familiar and p != word and not shares_stem(p, word) and word not in p
+                        for p in parts):
+                    clues.append(f"A kind of {' '.join(parts)}.")
+                    break
+    return list(dict.fromkeys(clues))
+
+
 def pick_sense(engine, word):
     """The WordNet noun sense closest to the word's neighbours in the embeddings.
 
     Named things (a sense that is an instance, such as a person) and senses
     whose definition names something ("the United States head of state") are
-    skipped, since clues may not contain names. Falls back to the word itself
-    when WordNet has no usable noun sense.
+    skipped, since clues may not contain names. Returns None when WordNet has
+    no usable noun sense.
     """
     def named(synset):
         return any(t.lower() != word for t in re.findall(r"\b[A-Z][a-z]+", synset.definition()))
@@ -203,11 +274,11 @@ def pick_sense(engine, word):
     synsets = [s for s in wn.synsets(word, pos="n")[:MAX_SENSES] if not s.instance_hypernyms()]
     synsets = [s for s in synsets if not named(s)] or synsets  # "Mexican liquor" is all there is
     if not synsets:
-        return word
+        return None
     ranking = engine.ranking(word)
     centre = bag_vector(engine, [ranking.neighbour(i)[0] for i in range(NEIGHBOURS)], word)
     if centre is None:
-        return synsets[0].definition()
+        return synsets[0]
 
     def closeness(synset):
         v = bag_vector(engine, sense_words(synset), word)
@@ -220,7 +291,7 @@ def pick_sense(engine, word):
         score = closeness(synset)
         if score > best_score + SENSE_MARGIN:
             best, best_score = synset, score
-    return best.definition()
+    return best
 
 
 def shares_stem(token, word):
@@ -270,11 +341,19 @@ class Checker:
                 problems.append(f'The {name} clue contains the name "{names[0]}".')
         return problems
 
-    def false_clues(self, word, meaning, clues):
-        """(clue name, reason) for each clue the checker model says is wrong."""
+    def false_clues(self, word, meaning, clues, check_vague=True):
+        """(clue name, reason) for each clue the checker model says is wrong.
+
+        The medium clue is checked against the dictionary meaning, since it
+        should only restate a detail from it. A vague clue taken from WordNet
+        is true by construction and needs no check.
+        """
         wrong = []
         for name, clue in zip(CLUE_NAMES, clues):
-            answer = ask(CHECKER_MODEL, FACT_PROMPT.format(word=word, meaning=meaning, clue=clue),
+            if name == "vague" and not check_vague:
+                continue
+            prompt = MEDIUM_FACT_PROMPT if name == "medium" else FACT_PROMPT
+            answer = ask(CHECKER_MODEL, prompt.format(word=word, meaning=meaning, clue=clue),
                          FACT_SCHEMA)
             if not answer.get("correct", False):
                 wrong.append((name, answer.get("reason", "")))
@@ -302,10 +381,14 @@ class Checker:
         return ranks, guesses_seen
 
 
-def solver_problems(word, ranks, guesses):
-    """Why the solver run fails, as feedback for the writer (empty = pass)."""
+def solver_problems(word, ranks, guesses, fixed_vague=False):
+    """Why the solver run fails, as feedback for the writer (empty = pass).
+
+    A giveaway vague clue from WordNet isn't the writer's to fix, so it's
+    left out when fixed_vague is set; the caller moves up a category instead.
+    """
     problems = []
-    if ranks[0] == 1:
+    if ranks[0] == 1 and not fixed_vague:
         problems.append(
             f'From the vague clue alone a player guessed {", ".join(guesses[0])}, so it gives the '
             f'word away. Make the vague clue broader: only the general category.')
@@ -322,38 +405,69 @@ def score(entry):
     return (entry["passed"], bool(entry["solver_ranks"]), -(r3 or 10**6))
 
 
-def check(checker, word, sense, written):
-    """Run all three checks. Returns (clues, problems, ranks, guesses)."""
-    clues = [str(written.get(name, "")).strip() for name in CLUE_NAMES]
+def check(checker, word, sense, written, vague=None):
+    """Run all three checks. Returns (clues, problems, ranks, guesses).
+
+    vague is the WordNet category clue, or None when the writer wrote one.
+    """
+    clues = [vague or str(written.get("vague", "")).strip(),
+             str(written.get("medium", "")).strip(), str(written.get("strong", "")).strip()]
     problems = checker.rule_problems(word, clues)
     if problems:
         return clues, problems, [], []
     problems = [f'The {name} clue was judged wrong: {reason.strip().rstrip(".")}. '
                 'Replace it with something plainly true.'
-                for name, reason in checker.false_clues(word, sense, clues)]
+                for name, reason in checker.false_clues(word, sense, clues, vague is None)]
     if problems:
         return clues, problems, [], []
     ranks, guesses = checker.solve(word, clues)
-    return clues, solver_problems(word, ranks, guesses), ranks, guesses
+    return clues, solver_problems(word, ranks, guesses, vague is not None), ranks, guesses
 
 
-def make_entry(checker, word, attempts):
-    """Write clues, then revise them with feedback until they pass or tries run out."""
-    sense = pick_sense(checker.engine, word)
+def writer_prompt(word, sense, categories):
+    """The writer's first message and the JSON schema for its reply."""
+    fields = ["meaning", "strong", "medium"] + ([] if categories else ["vague"])
+    category = f"It is {categories[0][0].lower()}{categories[0][1:]}\n" if categories else ""
+    prompt = PROMPT.format(
+        word=word, sense=sense, category=category, count=len(fields) - 1,
+        vague="" if categories else VAGUE_FIELD,
+        example=json.dumps({f: KETTLE[f] for f in fields}, ensure_ascii=False))
+    schema = {"type": "object", "properties": {f: {"type": "string"} for f in fields},
+              "required": fields}
+    return prompt, schema
+
+
+def make_entry(checker, word, attempts, familiar):
+    """Write clues, then revise them with feedback until they pass or tries run out.
+
+    When WordNet gives the sense an everyday category, the vague clue is
+    "A kind of <category>." and the writer only writes the other two. If the
+    solver guesses the word from it, the next broader category is tried.
+    """
+    synset = pick_sense(checker.engine, word)
+    sense = synset.definition() if synset else word
+    categories = category_clues(synset, word, familiar) if synset else []
+    prompt, schema = writer_prompt(word, sense, categories)
     messages = [{"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": PROMPT.format(word=word, sense=sense)}]
-    best, tries = None, []
+                {"role": "user", "content": prompt}]
+    best, tries, level, written = None, [], 0, None
     for attempt in range(attempts):
-        try:
-            written = chat(WRITER_MODEL, messages, CLUES_SCHEMA, 0.6, num_predict=300)
-        except (requests.RequestException, ValueError, KeyError) as error:
-            tries.append({"error": str(error)})
-            continue
-        clues, problems, ranks, guesses = check(checker, word, sense, written)
+        if written is None:
+            try:
+                written = chat(WRITER_MODEL, messages, schema, 0.6, num_predict=300)
+            except (requests.RequestException, ValueError, KeyError) as error:
+                tries.append({"error": str(error)})
+                continue
+        vague = categories[level] if categories else None
+        clues, problems, ranks, guesses = check(checker, word, sense, written, vague)
+        giveaway = vague is not None and bool(ranks) and ranks[0] == 1
+        if giveaway:
+            problems.insert(0, f"The vague clue gave the word away ({', '.join(guesses[0])}).")
         entry = {
             "sense": sense,
             "meaning": written.get("meaning", ""),
             "clues": clues,
+            "category": vague is not None,
             "passed": not problems,
             "reason": " ".join(problems) or "ok",
             "solver_ranks": ranks,
@@ -364,11 +478,18 @@ def make_entry(checker, word, attempts):
             best = entry
         if entry["passed"]:
             break
-        messages += [
-            {"role": "assistant", "content": json.dumps(written, ensure_ascii=False)},
-            {"role": "user", "content": "Problems:\n- " + "\n- ".join(problems)
-             + "\nFix these and keep what was fine. Reply with all four fields again."},
-        ]
+        if giveaway:
+            if level + 1 == len(categories):
+                break  # no broader category left
+            level += 1
+            problems = problems[1:]
+        if problems:  # something the writer has to fix
+            messages += [
+                {"role": "assistant", "content": json.dumps(written, ensure_ascii=False)},
+                {"role": "user", "content": "Problems:\n- " + "\n- ".join(problems)
+                 + "\nFix these and keep what was fine. Reply with all the fields again."},
+            ]
+            written = None
     best = dict(best or {"clues": [], "passed": False, "reason": "writer failed",
                          "solver_ranks": [], "solver_guesses": []})
     best["attempts"] = len(tries)
@@ -417,13 +538,14 @@ def main():
         return
 
     checker = Checker(WordGameEngine())
+    familiar = familiar_words()
     words = load_words(args.sample, args.seed)
     todo = [w for w in words if w not in results or (args.redo_failed and not results[w]["passed"])]
     print(f"{len(todo)} words to do ({len(results)} already in {args.report.name})")
 
     started = time.time()
     for n, word in enumerate(todo, start=1):
-        entry = make_entry(checker, word, args.attempts)
+        entry = make_entry(checker, word, args.attempts, familiar)
         results[word] = entry
         save(args.report, results)
         mark = "PASS" if entry["passed"] else "FAIL"

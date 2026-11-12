@@ -143,7 +143,7 @@ From the repository root:
 uvicorn backend.api:app --reload --port 8000
 ```
 
-The API is now at `http://localhost:8000`, with interactive documentation at `http://localhost:8000/docs`. On Windows, `run_backend.bat` does the same thing using the `.venv` environment. The server prints today's answer at startup (`[startup] Today's answer: ...`), which is handy for testing.
+The API is now at `http://localhost:8000`, with interactive documentation at `http://localhost:8000/docs`. On Windows, `run_backend.bat` does the same thing using the `.venv` environment.
 
 ### 4. Point the frontend at your local backend
 
@@ -232,19 +232,21 @@ To change which words can be the answer, edit `data/target_blocklist.txt` (one w
 python backend/scripts/generate_clues.py
 ```
 
-The writer isn't asked to recall facts from memory. It gets one dictionary meaning from WordNet: of the word's senses, the one closest to the word's 25 nearest neighbours in the game's embeddings. That way the clues describe the same meaning the hot-and-cold ranks are built on (`washer` the machine, not the person or the seal). The most common sense wins unless another is clearly closer, and senses that are names, or whose definitions contain one, are skipped. The writer then fills in the meaning in its own words and the strong clue first, then the medium and vague clues, so all three stay on that meaning.
+The writer isn't asked to recall facts from memory. It gets one dictionary meaning from WordNet: of the word's senses, the one closest to the word's 25 nearest neighbours in the game's embeddings. That way the clues describe the same meaning the hot-and-cold ranks are built on (`washer` the machine, not the person or the seal). The most common sense wins unless another is clearly closer, and senses that are names, or whose definitions contain one, are skipped.
+
+The vague clue comes straight from WordNet rather than the model: it's the meaning's broader category, such as "A kind of home appliance." That's always true and always broad. Categories that cover too few things, are too abstract ("A kind of object"), or aren't everyday words (checked against the concreteness ratings, so `data/raw/concreteness_ratings.csv` is needed) are skipped. About 97% of the answers get one; for the rest the model writes the vague clue too. The writer fills in the meaning in its own words and the strong clue first, then the medium clue, which should restate a detail the dictionary meaning gives rather than add new facts.
 
 Each clue set has to pass three checks:
 
 - **Rules:** no answer word or a word built from it, nothing about letters, spelling or sounds, no names.
-- **Facts:** the second model, also given the meaning, checks each clue for errors. A vague clue that fits other things too is fine. It catches only about half of the subtly wrong clues, so some get through.
-- **Solver:** the second model guesses the word from the clues, one more clue at a time, and its guesses are ranked like a player's. The strongest clue has to bring it into the top 10, and none of its three guesses from the vague clue alone may be the answer.
+- **Facts:** the second model, also given the meaning, checks the model-written clues for errors, the medium one against the meaning itself. It catches only some of the subtly wrong clues, so some get through.
+- **Solver:** the second model guesses the word from the clues, one more clue at a time, and its guesses are ranked like a player's. The strongest clue has to bring it into the top 10, and none of its three guesses from the vague clue alone may be the answer. If a WordNet category gives the word away, the next broader one is tried.
 
 When a set fails, the writer is told exactly what went wrong (which rule, which clue was judged wrong and why, what the solver guessed) and asked to fix it, up to 4 tries in all (`--attempts`).
 
-In a 30-word pilot, 24 words passed. Their clues were all about the right meaning, but about a third of the passing sets still had a doubtful detail, mostly in the medium clue. Skim the report before using the clues.
+In a 30-word pilot, 26 words passed, all about the right meaning. About a quarter of the passing sets still had a doubtful detail, mostly in the medium clue (half did before the medium clue was tied to the dictionary meaning). Skim the report before using the clues.
 
-On a CPU it takes a little over a minute per word, so the full list takes about two days. Progress goes to `data/raw/clue_report.json` after every word (git-ignored, since it names the words), so you can stop and rerun it; `--redo-failed` retries the words that failed. At the end, the passing clues go to `data/clues.json`, keyed by the schedule codes so the public file doesn't say which clues belong to which word. That step needs the schedule key; `--export-only` redoes just that step. Puzzles without clues still work: the Clue button just says there are none.
+On a CPU it takes about 50 seconds per word, so the full list takes about a day and a half. Progress goes to `data/raw/clue_report.json` after every word (git-ignored, since it names the words), so you can stop and rerun it; `--redo-failed` retries the words that failed. At the end, the passing clues go to `data/clues.json`, keyed by the schedule codes so the public file doesn't say which clues belong to which word. That step needs the schedule key; `--export-only` redoes just that step. Puzzles without clues still work: the Clue button just says there are none.
 
 ## Project structure
 
