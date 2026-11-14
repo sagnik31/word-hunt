@@ -1,4 +1,4 @@
-# scoring.py — percentile (used for the score) and rank-based temperature labels
+# scoring.py — percentile (shown with each guess) and rank-based temperature labels
 
 
 def compute_percentile(rank: int, total: int) -> float:

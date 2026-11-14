@@ -149,7 +149,7 @@ button:disabled {
   color: #d1d5db;
 }
 
-/* Row 2: Similar Word + Hint + Clue */
+/* Row 2: Clue + Hint */
 .action-row {
   margin-top: 0.75rem;
   display: flex;
@@ -169,7 +169,7 @@ button:disabled {
   justify-content: center;
 }
 
-/* Quit button same sizing as Hint/Similar Word */
+/* Quit button half the row */
 .quit-row .quit-button {
   min-width: 0;
   width: 50%;
@@ -270,4 +270,62 @@ footer {
   text-align: center;
   font-size: 0.85rem;
   color: #9ca3af;
+}
+
+/* Start screen: the clock starts on Play */
+.start {
+  margin: 1rem 0;
+  text-align: center;
+}
+
+.play-button {
+  padding: 0.8rem 2rem;
+  border-radius: 0.5rem;
+  border: none;
+  cursor: pointer;
+  background: #22c55e;
+  color: #f9fafb;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.play-button:hover {
+  background: #16a34a;
+}
+
+.start-note {
+  margin-top: 0.6rem;
+  font-size: 0.85rem;
+  color: #9ca3af;
+}
+
+.clock {
+  margin: 0 0 0.5rem;
+  text-align: right;
+  color: #9ca3af;
+  font-variant-numeric: tabular-nums;
+}
+
+/* How to play */
+.rules {
+  margin-top: 0.75rem;
+  text-align: left;
+  font-size: 0.9rem;
+  color: #d1d5db;
+}
+
+.rules summary {
+  cursor: pointer;
+  text-align: center;
+  font-weight: 600;
+}
+
+.rules h3 {
+  margin: 0.75rem 0 0.25rem;
+  font-size: 0.95rem;
+}
+
+.rules ul {
+  margin: 0.25rem 0;
+  padding-left: 1.2rem;
 }

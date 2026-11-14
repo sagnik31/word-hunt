@@ -3,8 +3,8 @@ from datetime import date
 import pytest
 
 from backend.daily import DailySchedule, decode, seconds_until_next_puzzle, word_code
+from backend.actions.hint import hint_ranks
 from backend.game import WordGameEngine
-from backend.scoring import calculate_final_score
 from backend.utils.scoring import describe_hotness
 
 ANSWER = "apple"
@@ -96,34 +96,57 @@ def test_invalid_guesses_are_rejected(engine, word, error):
     assert result["matched"] is None
 
 
-# --- Hint and Similar Word --------------------------------------------------
+# --- Hints ------------------------------------------------------------------
 
 
-def test_suggestion_is_a_ranked_neighbour(engine, ranking):
-    info = engine.suggest(ANSWER, None, 0)
-    assert info["word"] != ANSWER
-    assert ranking.rank_of[engine.word_index[info["word"]]] == info["rank"]
-    assert info["total"] == ranking.total
+@pytest.mark.parametrize(
+    "hints_used, best, ranks",
+    [
+        (0, None, (6, 10)),
+        (0, 500, (6, 10)),
+        (0, 11, (6, 10)),
+        (0, 8, (6, 7)),  # a best inside the range shrinks it
+        (0, 6, (5, 5)),
+        (0, 3, (2, 2)),
+        (1, None, (2, 5)),
+        (1, 40, (2, 5)),
+        (1, 4, (2, 3)),
+        (0, 2, None),  # only the answer is closer
+        (1, 2, None),
+        (2, None, None),  # both hints used
+    ],
+)
+def test_hint_ranks(hints_used, best, ranks):
+    assert hint_ranks(hints_used, best) == ranks
 
 
-@pytest.mark.parametrize("times_used", [0, 5])
-def test_suggestion_beats_best_rank(engine, times_used):
-    best = 50
-    for _ in range(20):
-        info = engine.suggest(ANSWER, best, times_used)
-        # Once the closest neighbour (rank 2) is found there's nothing better.
-        assert info["rank"] < best or best == 2
-        best = min(best, info["rank"])
+@pytest.mark.parametrize("hints_used, low, high", [(0, 6, 10), (1, 2, 5)])
+def test_hint_reveals_an_ordinary_word_in_its_range(engine, ranking, hints_used, low, high):
+    for _ in range(30):
+        info = engine.hint(ANSWER, None, hints_used)
+        assert low <= info["rank"] <= high
+        i = engine.word_index[info["word"]]
+        assert ranking.rank_of[i] == info["rank"]
+        assert engine.hint_ok[i]
+        assert info["total"] == ranking.total
 
 
-def test_hint_never_reveals_the_answer(engine):
-    for best in (None, 3, 2):
-        for _ in range(30):
-            assert engine.suggest(ANSWER, best, 5)["word"] != ANSWER
+def test_hint_always_beats_the_best_rank(engine):
+    for best in (9, 7, 6, 4, 3):
+        for used in (0, 1):
+            for _ in range(10):
+                assert engine.hint(ANSWER, best, used)["rank"] < best
 
 
-def test_help_gets_stronger_after_three_uses(engine):
-    assert [engine.hint_strength(n) for n in range(5)] == ["soft"] * 3 + ["strong"] * 2
+def test_no_hint_when_only_the_answer_is_closer(engine):
+    assert engine.hint(ANSWER, 2, 0) is None
+    assert engine.hint(ANSWER, None, 2) is None
+
+
+def test_hint_words_leave_out_rare_and_inflected_words(engine):
+    ok = {str(w) for w, flag in zip(engine.words, engine.hint_ok) if flag}
+    assert {"cat", "sofa", "skid", "fishing"} <= ok
+    assert not {"skidded", "marshy"} & ok
 
 
 # --- Daily schedule ---------------------------------------------------------
@@ -160,20 +183,7 @@ def test_next_puzzle_countdown_is_within_a_day():
     assert 0 <= seconds_until_next_puzzle() <= 24 * 3600
 
 
-# --- Scoring ----------------------------------------------------------------
-
-
-def test_quitting_after_help_scores_less_than_quitting_without():
-    no_help = calculate_final_score(False, None, 0, 0, 99.0)
-    one_hint = calculate_final_score(False, None, 1, 0, 99.0)
-    assert no_help == 50
-    assert one_hint == 40
-
-
-def test_quitting_never_beats_a_quick_solve():
-    best_quit = calculate_final_score(False, None, 0, 0, 100.0)
-    quick_solve = calculate_final_score(True, 0.0, 0, 0, None, now=5.0)
-    assert best_quit < quick_solve == 100
+# --- Temperature labels ------------------------------------------------------
 
 
 @pytest.mark.parametrize(

@@ -4,7 +4,7 @@ from backend.daily import DailySchedule
 from backend.dependencies import get_engine, get_schedule, open_answer
 from backend.game import WordGameEngine
 from backend.schemas import GuessRequest, GuessResponse
-from backend.scoring import calculate_final_score
+from backend.scoring import solve_score
 
 router = APIRouter()
 
@@ -21,13 +21,11 @@ def make_guess_endpoint(
     score = None
     if result.get("is_correct") is True:
         stats = payload.stats
-        score = calculate_final_score(
-            True,
-            0.0,
+        score = solve_score(
+            stats.elapsed_seconds,
+            stats.clue_count,
             stats.hint_count,
-            stats.similar_count,
-            None,
-            now=stats.elapsed_seconds,
+            stats.guess_count + 1,  # the winning guess counts too
         )
 
     return GuessResponse(**result, score=score)

@@ -4,8 +4,8 @@ from typing import Dict, Iterable, Optional, Set
 import numpy as np
 
 from backend.actions.guess import make_guess
-from backend.actions.similar_word import get_similar_word
-from backend.config import EMBEDDINGS_PATH, WORD_FORMS_PATH
+from backend.actions.hint import get_hint, hint_ranks
+from backend.config import EMBEDDINGS_PATH, HINT_WORDS_PATH, WORD_FORMS_PATH
 from backend.utils.loaders import load_word_forms
 from backend.utils.word_forms import plural_forms
 
@@ -49,6 +49,7 @@ class WordGameEngine:
         self,
         embeddings_path: str = str(EMBEDDINGS_PATH),
         word_forms_path: str = str(WORD_FORMS_PATH),
+        hint_words_path: str = str(HINT_WORDS_PATH),
     ):
         data = np.load(embeddings_path)
         self.words = data["words"]  # numpy array, so a ranking can index it
@@ -61,6 +62,16 @@ class WordGameEngine:
         # Plurals and verb forms accepted as their base word ("cats" -> "cat").
         self.word_forms: Dict[str, str] = load_word_forms(word_forms_path)
         print(f"[WordGameEngine] Loaded {len(self.word_forms)} extra word forms")
+
+        # Which words a Hint may reveal; every word if the list is missing.
+        try:
+            with open(hint_words_path, encoding="utf-8") as fh:
+                hint_words = {line.strip() for line in fh if line.strip()}
+            self.hint_ok = np.array([w in hint_words for w in self.words.tolist()])
+        except FileNotFoundError:
+            print(f"[WordGameEngine] {hint_words_path} missing; hints may reveal any word")
+            self.hint_ok = np.ones(len(self.words), dtype=bool)
+        print(f"[WordGameEngine] {int(self.hint_ok.sum())} words can be hints")
 
         self._rankings: "OrderedDict[str, Ranking]" = OrderedDict()
 
@@ -80,14 +91,12 @@ class WordGameEngine:
             self._rankings.popitem(last=False)
         return ranking
 
-    @staticmethod
-    def hint_strength(times_used: int) -> str:
-        """The first 3 uses of a help feature are 'soft', later ones 'strong'."""
-        return "soft" if times_used < 3 else "strong"
-
     def guess(self, answer: str, word: str) -> Dict[str, Optional[object]]:
         return make_guess(word, self.ranking(answer), self.word_index, self.word_forms)
 
-    def suggest(self, answer: str, best_rank: Optional[int], times_used: int) -> Dict[str, object]:
-        """A word ranked better than best_rank (Hint and Similar Word)."""
-        return get_similar_word(self.ranking(answer), best_rank, self.hint_strength(times_used))
+    def hint(self, answer: str, best_rank: Optional[int], hints_used: int) -> Optional[Dict[str, object]]:
+        """The next hint's word, or None when no hint is left to give."""
+        ranks = hint_ranks(hints_used, best_rank)
+        if ranks is None:
+            return None
+        return get_hint(self.ranking(answer), ranks, self.hint_ok)

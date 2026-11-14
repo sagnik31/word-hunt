@@ -20,10 +20,37 @@
         <button type="button" id="today-button" class="nav-button">Today's puzzle</button>
         <button type="button" id="archive-button" class="nav-button">Past puzzles</button>
       </nav>
+      <details class="rules">
+        <summary>How to play</summary>
+        <ul>
+          <li>Press <strong>Play</strong> to start. The clock starts then and keeps running, even if you leave the page.</li>
+          <li>Guess any common word. Each guess gets a rank out of about 31,000: the answer is #1, and the lower the rank, the closer you are.</li>
+          <li>Plurals and verb forms count as their base word. Names, places and brands aren't accepted.</li>
+        </ul>
+        <h3>Clues and Hints</h3>
+        <ul>
+          <li><strong>Clues</strong> are three written clues, from a broad category to close to a definition. They cost 5, 10 and 15 points.</li>
+          <li><strong>Hints</strong> reveal a real word near the answer: Hint 1 one ranked #6–10, Hint 2 one ranked #2–5, always closer than your best. They cost 20 and 25 points.</li>
+          <li>Help unlocks only when you're stuck, in order: Clue 1, 2, 3, then Hint 1, 2. The first needs 10 guesses, and each one needs 5 guesses in a row without a new best. A puzzle without clues goes straight to Hints.</li>
+        </ul>
+        <h3>Scoring</h3>
+        <ul>
+          <li>A solve starts at 100. Time costs nothing for the first 2 minutes, then a little more each minute, up to 30 points. Clues and Hints cost what's shown on them. After 15 guesses, every 3 more cost 1 point, up to 15.</li>
+          <li>A solve never scores below 25.</li>
+          <li><strong>Quit</strong> reveals the answer and scores at most 20: a share of what you'd have scored, more the closer your best guess was (nothing if it was ranked #1,000 or worse). Solving always beats quitting.</li>
+        </ul>
+      </details>
     </header>
 
     <main>
       <section id="game">
+        <section id="start" class="start hidden">
+          <button type="button" id="play-button" class="play-button">▶ Play today's game</button>
+          <p class="start-note">The clock starts when you press Play and keeps running until you solve or quit.</p>
+        </section>
+
+        <p id="clock" class="clock hidden"></p>
+
         <form id="guess-form" autocomplete="off">
           <label for="guess-input">Your guess:</label>
 
@@ -39,19 +66,16 @@
             <button type="submit" id="guess-button">Guess</button>
           </div>
 
-          <!-- Row 2: Similar Word + Hint + Clue -->
+          <!-- Row 2: Clue, then Hint once the clues are used -->
           <div class="action-row">
-            <button type="button" id="similar-word-button" class="action-button">
-              Similar Word
+            <button type="button" id="clue-button" class="action-button">
+              Clue
             </button>
             <button type="button" id="hint-button" class="action-button">
               Hint
             </button>
-            <button type="button" id="clue-button" class="action-button">
-              Clue
-            </button>
           </div>
-          <p id="clue-note" class="clue-note"></p>
+          <p id="help-note" class="clue-note"></p>
 
           <!-- Row 3: Quit centered -->
           <div class="quit-row">

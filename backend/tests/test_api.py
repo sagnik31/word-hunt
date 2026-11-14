@@ -64,10 +64,11 @@ def test_each_puzzle_has_its_own_answer(client):
 
 
 def test_winning_guess_is_scored_from_the_players_stats(client):
-    stats = {"elapsed_seconds": 5, "hint_count": 1, "similar_count": 1}
+    # 10 min (14.6), one clue (5), one hint (20), 29 + the winning guess (5)
+    stats = {"elapsed_seconds": 600, "guess_count": 29, "clue_count": 1, "hint_count": 1}
     data = client.post("/guess", json={"puzzle": 2, "word": "apple", "stats": stats}).json()
     assert data["is_correct"] is True
-    assert data["score"] == 80  # 100 minus 10 per help, no time penalty yet
+    assert data["score"] == 55
 
 
 @pytest.mark.parametrize("puzzle", [0, 3, 99])
@@ -76,18 +77,38 @@ def test_future_and_unknown_puzzles_are_refused(client, puzzle):
     assert client.post("/quit", json={"puzzle": puzzle}).status_code == 404
 
 
-@pytest.mark.parametrize("path", ["/hint", "/similar_word"])
-def test_help_endpoints_require_post(client, path):
-    assert client.get(path).status_code == 405
-    response = client.post(path, json={"puzzle": 2, "best_rank": 40, "times_used": 0})
+def test_hint_requires_post(client):
+    assert client.get("/hint").status_code == 405
+    response = client.post("/hint", json={"puzzle": 2, "best_rank": 40, "hints_used": 0})
     assert response.status_code == 200
-    assert 2 <= response.json()["rank"] < 40
+    assert 6 <= response.json()["rank"] <= 10
+
+
+def test_second_hint_is_closer(client):
+    response = client.post("/hint", json={"puzzle": 2, "best_rank": 8, "hints_used": 1})
+    assert 2 <= response.json()["rank"] <= 5
+
+
+@pytest.mark.parametrize("body", [{"best_rank": 2, "hints_used": 0}, {"best_rank": 50, "hints_used": 2}])
+def test_no_hint_left_is_a_conflict(client, body):
+    assert client.post("/hint", json={"puzzle": 2, **body}).status_code == 409
+
+
+def test_similar_word_is_gone(client):
+    assert client.post("/similar_word", json={"puzzle": 2}).status_code == 404
+
+
+def test_puzzle_info_gives_the_clue_count(client):
+    assert client.get("/puzzle/2").json() == {"puzzle": 2, "clue_total": 3}
+    assert client.get("/puzzle/1").json() == {"puzzle": 1, "clue_total": 0}
+    assert client.get("/puzzle/3").status_code == 404
 
 
 def test_quit_reveals_the_answer_and_scores_best_rank(client):
-    data = client.post("/quit", json={"puzzle": 1, "stats": {"best_rank": 2}}).json()
+    stats = {"elapsed_seconds": 600, "guess_count": 12, "clue_count": 1, "best_rank": 4}
+    data = client.post("/quit", json={"puzzle": 1, "stats": stats}).json()
     assert data["answer"] == "piano"
-    assert data["score"] == 50
+    assert data["score"] == 14
 
 
 def test_bad_stats_are_rejected(client):

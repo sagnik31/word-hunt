@@ -6,9 +6,10 @@ from pydantic import BaseModel, Field
 class PlayerStats(BaseModel):
     """The player's progress on a puzzle, kept in their browser."""
 
-    elapsed_seconds: float = Field(0.0, ge=0)  # since the first guess or help
-    hint_count: int = Field(0, ge=0)
-    similar_count: int = Field(0, ge=0)
+    elapsed_seconds: float = Field(0.0, ge=0)  # since the clock started
+    guess_count: int = Field(0, ge=0)  # valid guesses before this request
+    clue_count: int = Field(0, ge=0)  # clues used
+    hint_count: int = Field(0, ge=0)  # hints used
     best_rank: Optional[int] = Field(None, ge=1)
 
 
@@ -18,10 +19,10 @@ class GuessRequest(BaseModel):
     stats: PlayerStats = Field(default_factory=PlayerStats)
 
 
-class HelpRequest(BaseModel):
+class HintRequest(BaseModel):
     puzzle: int
     best_rank: Optional[int] = Field(None, ge=1)
-    times_used: int = Field(0, ge=0)  # earlier uses of this feature on this puzzle
+    hints_used: int = Field(0, ge=0)  # hints already shown on this puzzle
 
 
 class ClueRequest(BaseModel):
@@ -61,7 +62,12 @@ class HealthResponse(BaseModel):
     puzzle_ready: bool
 
 
-class SuggestionResponse(BaseModel):
+class PuzzleResponse(BaseModel):
+    puzzle: int
+    clue_total: int  # written clues this puzzle has; 0 when none
+
+
+class HintResponse(BaseModel):
     word: str
     rank: int
     total: int

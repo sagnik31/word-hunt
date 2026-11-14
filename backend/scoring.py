@@ -1,158 +1,122 @@
-# backend/scoring.py
 """
-Final scoring logic for the Word Hot-Cold game.
+Score rules for a finished puzzle.
 
-This module is intentionally kept separate from the core game engine so that
-scoring rules can be tweaked or swapped out without touching gameplay logic.
+A solve starts from 100 and loses points for time, help and guesses, but
+never drops below SOLVE_FLOOR. A quit earns a small share of what a solve
+would have, scaled by how close the player got, and can never reach
+SOLVE_FLOOR: a quitter never beats anyone who solved.
 
-Current rules (V1):
-- Base: 100 points for a correct guess.
-- Time penalty:
-    * 0–10s   : 0 penalty
-    * 10–30s  : mild linear increase
-    * 30–120s : faster (non-linear) increase
-    * 120s+   : slow linear tail, capped overall
-- Help penalty:
-    * Each hint:          -10 points
-    * Each similar word:  -10 points
-- Time is measured from the first guess or help request, not from when
-  the word was picked.
-- Quit:
-    * Score = round(best_percentile_reached / 2) minus the same help penalty
-    * Halving keeps quitting worth less than solving, and the help penalty
-      stops "take a hint, then quit" from paying off.
-    * If no valid guesses (percentile <= 0 or None) → 0 points.
-- Final score is never negative.
+All the numbers live in the constants below so they're easy to tune.
 """
 
 from __future__ import annotations
 
-import time
+import math
 from typing import Optional
 
+# --- Rules ------------------------------------------------------------------
 
-def base_points(is_correct: bool) -> int:
-    """
-    Base points just for solving the puzzle.
-    """
-    return 100 if is_correct else 0
+BASE_POINTS = 100
+SOLVE_FLOOR = 25  # a solve never scores less
 
+# Time: nothing for TIME_GRACE_MINUTES, then
+# TIME_MAX * (1 - e^(-(t - grace) / TIME_SCALE_MINUTES)), t in minutes.
+TIME_GRACE_MINUTES = 2.0
+TIME_MAX = 30.0
+TIME_SCALE_MINUTES = 12.0
 
-def time_penalty(seconds: float) -> int:
-    """
-    Time-based penalty with three phases:
+# Help: the n-th clue or hint used costs the n-th entry.
+CLUE_COSTS = (5, 10, 15)
+HINT_COSTS = (20, 25)
 
-    1. 0–10 seconds  : no penalty (players can think a bit)
-    2. 10–30 seconds : mild linear penalty, up to ~10 points
-    3. 30–120 seconds: faster non-linear increase (steep region)
-    4. 120+ seconds  : slow tail that increases gently, capped overall
+# Guesses: GUESS_PENALTY_STEP guesses beyond GUESS_FREE cost 1 point each
+# step, up to GUESS_PENALTY_MAX.
+GUESS_FREE = 15
+GUESS_PENALTY_STEP = 3
+GUESS_PENALTY_MAX = 15
 
-    The constants are intentionally conservative so that scores don't
-    instantly drop to zero for taking more time; they can be tuned later
-    after some playtesting.
-    """
-    if seconds <= 10:
-        return 0
+# Quit: QUIT_SHARE of the solve score before its floor, times closeness.
+# Closeness is 1 at rank 2 and falls to 0 at rank 2 * CLOSENESS_SPAN.
+QUIT_SHARE = 0.2
+CLOSENESS_SPAN = 500
 
-    # 10–30s: mild linear increase up to ~10 points
-    if seconds <= 30:
-        # Example: 20s -> ~5, 30s -> ~10
-        return int((seconds - 10) / 2)
-
-    # 30–120s: steeper non-linear (quadratic) increase
-    if seconds <= 120:
-        extra = seconds - 30.0  # 0–90
-        t = extra / 90.0  # normalized 0–1
-        # Penalty ranges roughly from 10 to 40 over this window
-        return 10 + int(30 * (t ** 2))
-
-    # Beyond 120s: slow linear tail, capped
-    extra = seconds - 120.0
-    # Start around 40, then +1 every 30s, capped at 60
-    penalty = 40 + int(extra / 30.0)
-    return min(penalty, 60)
+# The quit rule only works if the best possible quit stays below a solve.
+assert QUIT_SHARE * BASE_POINTS < SOLVE_FLOOR
 
 
-def help_penalty(hint_count: int, similar_count: int) -> int:
-    """
-    Penalty for consuming help.
-
-    For V1 we treat:
-      - each hint, and
-      - each similar word request
-    the same: -10 points each.
-
-    Keeping them separate as inputs makes it easy to change their relative
-    weight in the future (e.g., -8 for hints, -5 for similar words, etc.).
-    """
-    return 10 * hint_count + 10 * similar_count
+# --- Parts ------------------------------------------------------------------
 
 
-def quit_partial_score(best_percentile: Optional[float]) -> int:
-    """
-    Partial score when the user quits.
-
-    We use the best percentile achieved so far (0–100) and halve it:
-      score = round(best_percentile / 2)
-
-    i.e., if best_percentile is 72.3, the player gets 36 points (before the
-    help penalty, which calculate_final_score subtracts).
-
-    If no meaningful progress was made (None or <= 0), return 0.
-    """
-    if best_percentile is None or best_percentile <= 0.0:
-        return 0
-
-    # best_percentile is already 0–100
-    return int(round(best_percentile / 2))
+def time_penalty(seconds: float) -> float:
+    """Points lost to the clock, from 0 up to (never quite) TIME_MAX."""
+    minutes = max(0.0, seconds) / 60.0
+    if minutes <= TIME_GRACE_MINUTES:
+        return 0.0
+    return TIME_MAX * (1.0 - math.exp(-(minutes - TIME_GRACE_MINUTES) / TIME_SCALE_MINUTES))
 
 
-def calculate_final_score(
-    is_correct: bool,
-    start_time: Optional[float],
-    hint_count: int,
-    similar_count: int,
-    best_percentile: Optional[float],
-    now: Optional[float] = None,
+def _cost(costs: tuple, used: int) -> int:
+    # The game allows no more uses than the table has; older saves from
+    # before these rules may report more, and pay for the table only.
+    return sum(costs[: max(0, used)])
+
+
+def clue_cost(clues_used: int) -> int:
+    return _cost(CLUE_COSTS, clues_used)
+
+
+def hint_cost(hints_used: int) -> int:
+    return _cost(HINT_COSTS, hints_used)
+
+
+def help_cost(clues_used: int, hints_used: int) -> int:
+    return clue_cost(clues_used) + hint_cost(hints_used)
+
+
+def guess_penalty(guesses: int) -> int:
+    """1 point per GUESS_PENALTY_STEP guesses beyond GUESS_FREE, capped."""
+    return min(GUESS_PENALTY_MAX, max(0, guesses - GUESS_FREE) // GUESS_PENALTY_STEP)
+
+
+def closeness(best_rank: Optional[int]) -> float:
+    """How close the best guess got: 1.0 at rank 2, 0.0 at rank 1,000 or worse."""
+    if best_rank is None:
+        return 0.0
+    value = 1.0 - math.log(max(best_rank, 2) / 2) / math.log(CLOSENESS_SPAN)
+    return min(1.0, max(0.0, value))
+
+
+def _round(x: float) -> int:
+    # Halves round up (Python's round() would send 14.5 to 14).
+    return math.floor(x + 0.5)
+
+
+def _raw_score(seconds: float, clues_used: int, hints_used: int, guesses: int) -> float:
+    return (
+        BASE_POINTS
+        - time_penalty(seconds)
+        - help_cost(clues_used, hints_used)
+        - guess_penalty(guesses)
+    )
+
+
+# --- Scores -----------------------------------------------------------------
+
+
+def solve_score(seconds: float, clues_used: int, hints_used: int, guesses: int) -> int:
+    """Score for solving; `guesses` includes the winning one."""
+    return max(SOLVE_FLOOR, _round(_raw_score(seconds, clues_used, hints_used, guesses)))
+
+
+def quit_score(
+    seconds: float,
+    clues_used: int,
+    hints_used: int,
+    guesses: int,
+    best_rank: Optional[int],
 ) -> int:
-    """
-    Main entrypoint for computing the final score for a round.
-
-    Parameters
-    ----------
-    is_correct : bool
-        Whether the round ended with a correct guess (True) or a quit (False).
-    start_time : Optional[float]
-        UNIX timestamp (time.time()) of the round's first guess or help
-        request; None if the player hasn't acted yet.
-    hint_count : int
-        Number of hints used in this round.
-    similar_count : int
-        Number of similar-word requests used in this round.
-    best_percentile : Optional[float]
-        Best percentile achieved across guesses/hints (0–100).
-        Used only when is_correct == False (quit case).
-    now : Optional[float]
-        Optional override for the "current time" (useful for tests).
-        If None, time.time() will be used.
-
-    Returns
-    -------
-    int
-        Final score for the round, clamped to a minimum of 0.
-    """
-    # Quit case: use percentile-based partial score, minus help used
-    if not is_correct:
-        score = quit_partial_score(best_percentile)
-        score -= help_penalty(hint_count, similar_count)
-        return max(score, 0)
-
-    # Correct case: compute time + help penalties
-    current_time = time.time() if now is None else now
-    elapsed = 0.0 if start_time is None else max(0.0, current_time - start_time)
-
-    score = base_points(True)
-    score -= time_penalty(elapsed)
-    score -= help_penalty(hint_count, similar_count)
-
-    return max(score, 0)
+    """Score for quitting: 0 with no guesses, never more than QUIT_SHARE * BASE_POINTS."""
+    if guesses <= 0 or best_rank is None:
+        return 0
+    raw = max(0.0, _raw_score(seconds, clues_used, hints_used, guesses))
+    return _round(QUIT_SHARE * raw * closeness(best_rank))

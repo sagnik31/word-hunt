@@ -28,12 +28,12 @@ function writeAll(data) {
 function newGame() {
     return {
         entries: [], // guesses, suggestions and the final result, oldest first
-        hintCount: 0,
-        similarCount: 0,
+        hintCount: 0, // hints used (similar-word reveals)
         clues: [], // clue texts shown so far, vaguest first
         clueTotal: null, // how many clues the puzzle has, once the server says
         bestRank: null,
-        startedAt: null, // ms timestamp of the first guess or help
+        startedAt: null, // ms timestamp of pressing Play (older saves: the first guess or help)
+        finishedAt: null, // ms timestamp of solving or quitting
         status: "playing", // "playing" | "won" | "quit"
         score: null,
         onTheDay: false, // won on the puzzle's own UTC day (counts for streaks)
@@ -47,7 +47,14 @@ export class Progress {
 
     game(puzzle) {
         // Older saves lack newer fields, so fill them in from a fresh game.
-        return { ...newGame(), ...this.data.games[puzzle] };
+        const game = { ...newGame(), ...this.data.games[puzzle] };
+        // Saves from before gameplay v2 counted Hint and Similar Word apart;
+        // both are Hints now.
+        if ("similarCount" in game) {
+            game.hintCount += Number(game.similarCount) || 0;
+            delete game.similarCount;
+        }
+        return game;
     }
 
     // Has the player started this puzzle?

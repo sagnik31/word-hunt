@@ -7,9 +7,9 @@ request names a puzzle number, and the browser sends the player's progress.
 
   - GET  /health
   - GET  /today           (today's puzzle number, UTC)
+  - GET  /puzzle/{number} (how many clues a puzzle has)
   - POST /guess
-  - POST /similar_word    (suggest a hot word)
-  - POST /hint            (suggest a hot word)
+  - POST /hint            (reveal a word close to the answer)
   - POST /clue            (the next written clue)
   - POST /quit            (reveal the answer)
 
@@ -87,5 +87,5 @@ app.include_router(quit.router)
 def root():
     return {
         "message": "Word Hot-Cold Game API",
-        "endpoints": ["/health", "/today", "/guess", "/similar_word", "/hint", "/clue", "/quit", "/docs"],
+        "endpoints": ["/health", "/today", "/puzzle/{number}", "/guess", "/hint", "/clue", "/quit", "/docs"],
     }

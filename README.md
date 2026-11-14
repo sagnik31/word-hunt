@@ -8,12 +8,15 @@ The backend runs on Render's free tier and sleeps when idle, so the first reques
 
 ## How to play
 
-1. Guess any common English word: a noun, verb, adjective or anything else. The game shows its rank among all ~31,000 words (the answer is rank 1), its similarity score, and a temperature label.
-2. Use the ranks to steer toward the answer. A guess that ranks #4 means you are very close; one that ranks #20,000 means you should change direction.
-3. Plurals and verb forms count as their base word: `cats` is scored as `cat`, and `baked` as `bake`. If the answer is `dog`, guessing `dogs` wins.
-4. Proper nouns are never accepted: no names, places, brands, days or months.
-5. If you get stuck, **Hint** or **Similar Word** reveals a word ranked closer than your best guess so far. Each use costs points.
-6. Still stuck? **Clue** unlocks once you've made 10 guesses and your last 5 haven't beaten your best rank. Each puzzle has up to three written clues, from vague to strong; each later clue needs another 5 guesses without a new best. Clues don't cost points yet.
+1. Press **Play** to start. The clock starts then and keeps running until you solve or quit, even if you close the page.
+2. Guess any common English word: a noun, verb, adjective or anything else. The game shows its rank among all ~31,000 words (the answer is rank 1), its similarity score, and a temperature label.
+3. Use the ranks to steer toward the answer. A guess that ranks #4 means you are very close; one that ranks #20,000 means you should change direction.
+4. Plurals and verb forms count as their base word: `cats` is scored as `cat`, and `baked` as `bake`. If the answer is `dog`, guessing `dogs` wins.
+5. Proper nouns are never accepted: no names, places, brands, days or months.
+6. Stuck? Help comes in two kinds, and unlocks in this order: Clue 1, 2 and 3, then Hint 1 and 2.
+   - **Clues** are written clues, from a broad category ("A kind of home appliance") to close to a definition.
+   - **Hints** reveal a real word near the answer: Hint 1 a word ranked #6–10, Hint 2 one ranked #2–5. The word is always closer than your best guess, so with a best of #2 there's no hint left to give. Hints only reveal everyday words, not rare or inflected ones.
+   - The first help unlocks after 10 guesses, and each one needs 5 guesses in a row, since the last help, without a new best rank. The buttons show how many more guesses that takes. A puzzle without clues goes straight to Hints, with the same gates.
 7. **Quit** at any time to reveal the answer and receive partial credit.
 8. Solve each day's puzzle on its day to build a **streak**. **Past puzzles** lists every earlier day; you can play any of them, but they don't count towards your streak.
 
@@ -35,12 +38,18 @@ Temperature labels are based on the guess's rank (the answer is rank 1):
 
 ### Scoring
 
-A correct guess is worth 100 points, minus:
+A solve is worth 100 points, minus:
 
-- **Time:** nothing for the first 10 seconds, then a penalty that grows gently, steepens between 30 and 120 seconds, and is capped at 60 points. The clock starts on your first action, not when the word is picked.
-- **Help:** 10 points for each Hint or Similar Word.
+- **Time:** nothing for the first 2 minutes, then `30 × (1 − e^(−(t − 2) / 12))` for `t` minutes: about 2 points at 3 minutes, 7 at 5, 15 at 10, 23 at 20 and 30 at the most. The clock starts when you press Play.
+- **Clues:** 5, 10 and 15 points for the first, second and third.
+- **Hints:** 20 and 25 points for the first and second, so each hint costs more than any clue.
+- **Guesses:** 1 point for every 3 guesses beyond 15, up to 15 points (5 at 30 guesses, 10 at 45).
 
-Quitting scores half of the best percentile you reached, minus the same help penalty. Scores never go below zero. The rules live in [`backend/scoring.py`](backend/scoring.py).
+A solve never scores below 25.
+
+**Quitting** reveals the answer. Its score is `0.2 × (100 − time − help − guesses) × closeness`, rounded, where closeness is 1 for a best guess ranked #2, 0.89 for #4, 0.74 for #10, 0.37 for #100 and 0 for #1,000 or worse (`1 − ln(best / 2) / ln(500)`). With no guesses it's 0. For example, quitting after 10 minutes with a best of #4 and one clue scores 0.2 × 80.4 × 0.89 ≈ 14.
+
+A quit can score at most 20 and a solve at least 25, so **a player who quits never beats one who solved**, however much help the solver used. The rules and their numbers live at the top of [`backend/scoring.py`](backend/scoring.py).
 
 ## How it works
 
@@ -62,10 +71,11 @@ Runtime:  embeddings.npz + word lists ──► FastAPI backend (Render) ◄─�
 
 The CSV isn't committed. To rebuild the lists, download it to `data/raw/concreteness_ratings.csv` (see [Rebuilding the data](#rebuilding-the-data)).
 
-[`backend/scripts/build_word_lists.py`](backend/scripts/build_word_lists.py) builds three files from it:
+[`backend/scripts/build_word_lists.py`](backend/scripts/build_word_lists.py) builds four files from it:
 
 - `data/guess_words.txt`: every single word in the dataset that has a GloVe vector and isn't a proper noun (about 31,000).
 - `data/target_words.txt`: the possible answers. These are nouns known by at least 95% of people, with a concreteness rating of at least 4.0 out of 5 and a subtitle frequency of at least 50, minus plurals and the words in `data/target_blocklist.txt` (about 2,500).
+- `data/hint_words.txt`: the guess words a Hint may reveal (about 16,700): known by at least 95% of people, with a subtitle frequency of at least 10, and not an inflected form of another word. That keeps out neighbours such as `skidded` or `marshy`.
 - `data/word_forms.txt`: about 22,000 plurals and verb forms that aren't guess words themselves, each mapped to its base word (`cats` → `cat`). The rules live in [`backend/utils/word_forms.py`](backend/utils/word_forms.py).
 
 A word counts as a proper noun when the WordNet dictionary only knows it with a capital letter (`Monday`, `Kleenex`), or when it's listed in `data/proper_nouns.txt`.
@@ -74,7 +84,7 @@ A word counts as a proper noun when the WordNet dictionary only knows it with a 
 
 **Daily schedule.** [`backend/scripts/build_schedule.py`](backend/scripts/build_schedule.py) shuffles the answers into `data/daily_schedule.txt`, where line N is puzzle #N and puzzle #1 is `LAUNCH_DATE` in [`backend/config.py`](backend/config.py). Each line is a keyed hash (HMAC) of the answer rather than the word, because the repository is public: without the schedule key, nobody can tell which word a line stands for. Rerunning the script never changes today's or earlier puzzles; it drops future words that are no longer answers and appends new ones, so no word repeats.
 
-**Backend.** At startup, the game engine loads the embeddings and word forms once, and decodes the schedule with the key (about 115 MB of memory). The server keeps no player state: every request names a puzzle number, and the server refuses puzzles that haven't been released yet. Ranking every guess word against an answer takes a few milliseconds and is cached for recent answers. Scores are computed from the stats the browser sends (time, help used, best rank).
+**Backend.** At startup, the game engine loads the embeddings and word forms once, and decodes the schedule with the key (about 115 MB of memory). The server keeps no player state: every request names a puzzle number, and the server refuses puzzles that haven't been released yet. Ranking every guess word against an answer takes a few milliseconds and is cached for recent answers. Scores are computed from the stats the browser sends (time since Play, guesses, clues and hints used, best rank).
 
 **Frontend.** Plain HTML, CSS and JavaScript ES modules with no build step, served from [`docs/`](docs/) by GitHub Pages. It talks to the backend over a small REST API and keeps each player's progress in `localStorage`.
 
@@ -184,12 +194,12 @@ Use `python -m pytest` rather than plain `pytest`; the former puts the repositor
 | GET    | `/health`       | Reports whether the engine and the schedule loaded.                 |
 | GET    | `/today`        | Today's puzzle number, the UTC date, the launch date and the seconds until the next puzzle. Every puzzle from 1 to today's is playable. |
 | POST   | `/guess`        | Body: `{"puzzle": 7, "word": "...", "stats": {...}}`. Returns rank, similarity, percentile and temperature label. `matched` holds the base word when a plural or verb form was scored as it (`cats` → `cat`). Includes the score on a correct guess, computed from `stats`. |
-| POST   | `/hint`         | Body: `{"puzzle": 7, "best_rank": 120, "times_used": 0}`. Returns a word ranked closer than `best_rank`; it gets stronger after 3 uses. |
-| POST   | `/similar_word` | Same as `/hint`; the browser counts its uses separately.            |
+| GET    | `/puzzle/{n}`   | `{"puzzle", "clue_total"}`: how many written clues puzzle `n` has (0 when none). |
+| POST   | `/hint`         | Body: `{"puzzle": 7, "best_rank": 120, "hints_used": 0}`. Returns an everyday word ranked #6–10 (first hint) or #2–5 (second), always better than `best_rank`. 409 when no hint is left to give. |
 | POST   | `/clue`         | Body: `{"puzzle": 7, "clues_used": 0}`. Returns the next written clue, `{"clue", "number", "total"}`. 404 if the puzzle has no clues, 409 when they're used up. |
 | POST   | `/quit`         | Body: `{"puzzle": 7, "stats": {...}}`. Reveals the answer and returns the partial score. |
 
-`stats` is the player's progress on that puzzle: `elapsed_seconds` since the first guess or help, `hint_count`, `similar_count` and `best_rank`. A puzzle that hasn't been released yet returns 404.
+`stats` is the player's progress on that puzzle: `elapsed_seconds` since Play was pressed, `guess_count` (valid guesses before this request), `clue_count`, `hint_count` and `best_rank`. A puzzle that hasn't been released yet returns 404.
 
 Full request and response schemas are available at `/docs` while the server is running.
 
@@ -269,6 +279,7 @@ word-hunt/
 │   ├── target_words.txt     Possible answers
 │   ├── daily_schedule.txt   Which answer on which day (hashed)
 │   ├── word_forms.txt       Plurals and verb forms, mapped to base words
+│   ├── hint_words.txt       Everyday words a Hint may reveal
 │   ├── embeddings.npz       GloVe vectors for every guess word
 │   ├── target_blocklist.txt Words that are never the answer (hand-edited)
 │   ├── proper_nouns.txt     Extra proper nouns to exclude (hand-edited)
@@ -293,7 +304,7 @@ word-hunt/
 ## Limitations and roadmap
 
 - **Progress lives in the browser.** Clearing site data resets streaks, and progress doesn't sync between devices.
-- **Scores trust the browser.** The score uses the time and help counts the browser reports, so a determined player could fake them. That only matters once there's a leaderboard.
+- **Scores trust the browser.** The score uses the time, guess and help counts the browser reports, so a determined player could fake them. That only matters once there's a leaderboard.
 - **Clues come from small local models.** The automatic checks catch too-easy and off-meaning clues, but only about half of the subtly wrong ones, so the clues need a human skim. Some answers have no clues.
 - **Under consideration:** leaderboards, timed and category-based modes, and UI polish.
 

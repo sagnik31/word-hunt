@@ -14,6 +14,7 @@ DATA_DIR = BASE_DIR / "data"
 EMBEDDINGS_PATH = DATA_DIR / "embeddings.npz"  # every guess word's vector
 TARGET_WORDS_PATH = DATA_DIR / "target_words.txt"
 WORD_FORMS_PATH = DATA_DIR / "word_forms.txt"
+HINT_WORDS_PATH = DATA_DIR / "hint_words.txt"  # words ordinary enough to reveal
 
 # Daily puzzle. Puzzle #1 is LAUNCH_DATE; a new puzzle starts at midnight UTC.
 # Puzzle #1 went live on this day. Changing it shifts every puzzle's date.

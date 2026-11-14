@@ -31,17 +31,19 @@ export class ApiClient {
         return this.get("/today");
     }
 
-    // stats: { elapsed_seconds, hint_count, similar_count, best_rank }
+    // stats: { elapsed_seconds, guess_count, clue_count, hint_count, best_rank }
     makeGuess(puzzle, word, stats) {
         return this.post("/guess", { puzzle, word, stats });
     }
 
-    getSimilarWord(puzzle, bestRank, timesUsed) {
-        return this.post("/similar_word", { puzzle, best_rank: bestRank, times_used: timesUsed });
+    // { puzzle, clue_total }
+    getPuzzle(puzzle) {
+        return this.get(`/puzzle/${puzzle}`);
     }
 
-    getHint(puzzle, bestRank, timesUsed) {
-        return this.post("/hint", { puzzle, best_rank: bestRank, times_used: timesUsed });
+    // A word ranked better than bestRank; 409 when no hint is left to give.
+    getHint(puzzle, bestRank, hintsUsed) {
+        return this.post("/hint", { puzzle, best_rank: bestRank, hints_used: hintsUsed });
     }
 
     // The next written clue; 404 when the puzzle has none, 409 when used up.

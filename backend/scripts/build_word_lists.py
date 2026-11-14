@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Build the two word lists from the Brysbaert et al. (2014) concreteness ratings.
+Build the word lists from the Brysbaert et al. (2014) concreteness ratings.
 
 Run from the repository root:
     python backend/scripts/build_word_lists.py
@@ -21,6 +21,7 @@ Outputs, sorted:
   - data/target_words.txt  everyday, picturable nouns used as answers
   - data/word_forms.txt    "form<TAB>base" lines: plurals and verb forms that
                            aren't guess words themselves ("cats" -> "cat")
+  - data/hint_words.txt    guess words ordinary enough for a Hint to reveal
 """
 
 import csv
@@ -42,11 +43,17 @@ PROPER_NOUNS_PATH = DATA / "proper_nouns.txt"
 GUESS_OUT = DATA / "guess_words.txt"
 TARGET_OUT = DATA / "target_words.txt"
 FORMS_OUT = DATA / "word_forms.txt"
+HINT_OUT = DATA / "hint_words.txt"
 
 # Target filters (agreed with the owner: "Option A", about 2,900 candidates).
 MIN_PERCENT_KNOWN = 0.95  # share of raters who knew the word
 MIN_CONCRETENESS = 4.0  # 1 = abstract, 5 = concrete
 MIN_SUBTLEX = 50  # subtitle frequency count, drops rare words
+
+# Hint words: a Hint only reveals ordinary words, not rare or inflected
+# neighbours such as "marshy" (subtitle count 3) or "skidded" (a verb form).
+HINT_MIN_PERCENT_KNOWN = 0.95
+HINT_MIN_SUBTLEX = 10
 
 # Plurals that mean something other than "more than one" of the singular,
 # so the plural rule below keeps them.
@@ -125,6 +132,15 @@ def read_blocklist(path: Path) -> set:
     return words
 
 
+def is_inflected(word: str) -> bool:
+    """True for a form of another word ("skidded", "cats") that WordNet
+    doesn't list as a word of its own ("fishing" and "glasses" it does)."""
+    lemmas = {lemma.name().lower() for s in wordnet.synsets(word) for lemma in s.lemmas()}
+    if word in lemmas:
+        return False
+    return any(base != word for pos in "nvar" for base in wordnet._morphy(word, pos))
+
+
 def singular_forms(word: str) -> list:
     """Possible singulars of a regular English plural."""
     forms = []
@@ -153,6 +169,7 @@ def build():
     guesses = set()
     proper_nouns = set()
     nouns = set()
+    hint_words = set()
     for row in rows:
         word = row["Word"].strip().lower()
         if row["Bigram"] != "0" or not GUESS_PATTERN.fullmatch(word):
@@ -165,6 +182,12 @@ def build():
             proper_nouns.add(word)
             continue
         guesses.add(word)
+        if (
+            float(row["Percent_known"]) >= HINT_MIN_PERCENT_KNOWN
+            and int(row["SUBTLEX"]) >= HINT_MIN_SUBTLEX
+            and not is_inflected(word)
+        ):
+            hint_words.add(word)
         if (
             row["Dom_Pos"] == "Noun"
             and word.isalpha()
@@ -192,6 +215,7 @@ def build():
 
     GUESS_OUT.write_text("\n".join(sorted(guesses)) + "\n", encoding="utf-8")
     TARGET_OUT.write_text("\n".join(sorted(targets)) + "\n", encoding="utf-8")
+    HINT_OUT.write_text("\n".join(sorted(hint_words)) + "\n", encoding="utf-8")
     FORMS_OUT.write_text(
         "".join(f"{form}\t{base}\n" for form, base in sorted(word_forms.items())),
         encoding="utf-8",
@@ -200,6 +224,7 @@ def build():
     print(f"Rows in ratings file:      {len(rows)}")
     print(f"Proper nouns left out:     {len(proper_nouns)}")
     print(f"Guess words:               {len(guesses)}  -> {GUESS_OUT.name}")
+    print(f"Hint words:                {len(hint_words)}  -> {HINT_OUT.name}")
     print(f"Target candidates:         {len(nouns)}")
     print(f"  dropped as plurals:      {len(plurals)}")
     print(f"  dropped by blocklist:    {len(blocked)}")

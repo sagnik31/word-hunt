@@ -6,25 +6,38 @@ import {
     puzzleOnDate,
 } from "./storage.js";
 
+// Revealed words in the history. "similar word" entries come from saves made
+// before Hint and Similar Word became one Hint.
 const SUGGESTION_LABELS = {
-    "similar word": "💡 Similar Word",
+    "similar word": "🧠 Hint",
     hint: "🧠 Hint",
 };
 
-// Clues unlock when the player is stuck: the first after CLUE_FIRST_AFTER
-// guesses, and each one only once the last CLUE_STUCK_RUN guesses since the
-// previous clue brought no new best rank.
-const CLUE_FIRST_AFTER = 10;
-const CLUE_STUCK_RUN = 5;
+// Help comes in a fixed order, only when the player is stuck: Clue 1, 2 and
+// 3 (written clues), then Hint 1 and 2 (a word ranked 6-10, then 2-5). The
+// first needs HELP_FIRST_AFTER guesses; each one needs HELP_STUCK_RUN guesses
+// in a row, since the last help, with no new best rank. A puzzle without
+// clues goes straight to the hints, with the same gates.
+const HELP_FIRST_AFTER = 10;
+const HELP_STUCK_RUN = 5;
+// Points each use costs, in order. Mirrors backend/scoring.py.
+const CLUE_COSTS = [5, 10, 15];
+const HINT_COSTS = [20, 25];
+const HELP_TYPES = new Set(["clue", "hint", "similar word"]);
 
-function guessesUntilClue(game) {
+const guessCount = (n) => `${n} more guess${n === 1 ? "" : "es"}`;
+
+// How many more guesses until the next help unlocks, and whether they must
+// be without a new best (false while the first-help guess count is short).
+function helpProgress(game) {
     let best = null;
     let guesses = 0;
-    let run = 0; // guesses in a row, since the last clue, with no new best
+    let run = 0; // guesses in a row, since the last help, with no new best
+    let helped = false;
     for (const entry of game.entries) {
-        if (entry.type === "clue") {
+        if (HELP_TYPES.has(entry.type)) {
             run = 0;
-            continue;
+            helped = true;
         }
         if (typeof entry.rank !== "number") continue; // invalid guesses don't count
         const improved = best === null || entry.rank < best;
@@ -34,8 +47,21 @@ function guessesUntilClue(game) {
             run = improved ? 0 : run + 1;
         }
     }
-    const first = game.clues.length === 0 ? Math.max(0, CLUE_FIRST_AFTER - guesses) : 0;
-    return Math.max(first, CLUE_STUCK_RUN - run);
+    const first = helped ? 0 : Math.max(0, HELP_FIRST_AFTER - guesses);
+    const stuck = Math.max(0, HELP_STUCK_RUN - run);
+    return { needed: Math.max(first, stuck), stuck: stuck >= first };
+}
+
+// The next help on the ladder: { kind: "clue" | "hint", number, cost }, or null.
+function nextHelp(game) {
+    const cluesLeft = game.clueTotal === null || game.clues.length < game.clueTotal;
+    if (cluesLeft && game.clues.length < CLUE_COSTS.length) {
+        return { kind: "clue", number: game.clues.length + 1, cost: CLUE_COSTS[game.clues.length] };
+    }
+    if (game.hintCount < HINT_COSTS.length) {
+        return { kind: "hint", number: game.hintCount + 1, cost: HINT_COSTS[game.hintCount] };
+    }
+    return null;
 }
 
 // '"cats" (as "cat")' when a plural or verb form counted as its base word.
@@ -72,6 +98,15 @@ function describeEntry(entry) {
         }, sim=${entry.similarity.toFixed(3)}, ${entry.hotness}`;
 }
 
+// "3:07", or "1:03:07" past an hour.
+function formatClock(ms) {
+    const total = Math.max(0, Math.floor(ms / 1000));
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = String(total % 60).padStart(2, "0");
+    return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`;
+}
+
 function formatCountdown(ms) {
     const total = Math.max(0, Math.floor(ms / 1000));
     const pad = (n) => String(n).padStart(2, "0");
@@ -104,17 +139,19 @@ export class GameUI {
         this.historySection = $("history");
         this.historyList = $("history-list");
         this.guessButton = $("guess-button");
-        this.similarWordButton = $("similar-word-button");
         this.hintButton = $("hint-button");
         this.quitButton = $("quit-button");
         this.clueButton = $("clue-button");
-        this.clueNote = $("clue-note");
+        this.helpNote = $("help-note");
         this.cluesSection = $("clues");
         this.clueList = $("clue-list");
-        this.clueBusy = false; // a clue request is on its way
+        this.helpBusy = false; // a clue or hint request is on its way
+        this.startSection = $("start");
+        this.playButton = $("play-button");
+        this.clockEl = $("clock");
 
         this.formEl.addEventListener("submit", (e) => this.handleGuessSubmit(e));
-        this.similarWordButton.addEventListener("click", () => this.handleSimilarWordClick());
+        this.playButton.addEventListener("click", () => this.handlePlayClick());
         this.hintButton.addEventListener("click", () => this.handleHintClick());
         this.clueButton.addEventListener("click", () => this.handleClueClick());
         this.quitButton.addEventListener("click", () => this.handleQuitClick());
@@ -146,7 +183,7 @@ export class GameUI {
             this.setStatus("Cannot reach the server, or there's no puzzle today. Try again later.", "error");
             return;
         }
-        this.setStatus("Server online. Start guessing!", "ok");
+        this.setStatus("Server online.", "ok");
         this.route();
         setInterval(() => this.tick(), 1000);
     }
@@ -185,16 +222,63 @@ export class GameUI {
         this.historySection.classList.toggle("hidden", this.game.entries.length === 0);
         this.game.entries.forEach((entry) => this.addToHistory(entry));
         this.renderClues();
+        if (!this.gameOver) this.loadClueTotal(puzzle);
 
         this.resultSection.classList.add("hidden");
         this.nextPuzzleEl.classList.add("hidden");
         this.playPastButton.classList.add("hidden");
-        if (this.gameOver) {
+        this.inputEl.value = "";
+
+        // Not started yet: show the Play button instead of the board.
+        const waiting = !this.gameOver && this.game.startedAt === null;
+        this.startSection.classList.toggle("hidden", !waiting);
+        this.formEl.classList.toggle("hidden", waiting);
+        this.playButton.textContent =
+            this.puzzle === this.today ? "▶ Play today's game" : `▶ Play puzzle #${this.puzzle}`;
+        this.renderClock();
+
+        if (waiting) {
+            this.disableControls();
+            this.playButton.focus();
+        } else if (this.gameOver) {
             this.showFinalResult();
         } else {
             this.enableControls();
-            this.inputEl.value = "";
             this.inputEl.focus();
+        }
+    }
+
+    // Pressing Play starts the clock. It's wall time: it keeps running while
+    // the tab is hidden or closed, and a reload keeps the original start.
+    handlePlayClick() {
+        if (this.gameOver || this.game.startedAt !== null) return;
+        this.game.startedAt = Date.now();
+        this.save();
+        this.startSection.classList.add("hidden");
+        this.formEl.classList.remove("hidden");
+        this.renderClock();
+        this.enableControls();
+        this.inputEl.focus();
+    }
+
+    renderClock() {
+        const g = this.game;
+        const end = g.status === "playing" ? Date.now() : g.finishedAt;
+        const shown = g.startedAt !== null && end !== null;
+        this.clockEl.classList.toggle("hidden", !shown);
+        if (shown) this.clockEl.textContent = `⏱ ${formatClock(end - g.startedAt)}`;
+    }
+
+    // Ask the server how many clues the puzzle has, so a puzzle without clues
+    // offers hints instead. On failure the Clue button finds out when used.
+    async loadClueTotal(puzzle) {
+        try {
+            const info = await this.api.getPuzzle(puzzle);
+            if (puzzle !== this.puzzle || this.gameOver) return;
+            this.game.clueTotal = info.clue_total;
+            this.renderHelp();
+        } catch (err) {
+            console.warn("Could not load the puzzle's clue count:", err);
         }
     }
 
@@ -251,6 +335,7 @@ export class GameUI {
             }
             this.setStatus("A new puzzle is out! Press \"Today's puzzle\" to play it.", "ok");
         }
+        if (this.game && this.archiveSection.classList.contains("hidden")) this.renderClock();
         if (!this.nextPuzzleEl.classList.contains("hidden")) {
             this.nextPuzzleEl.textContent = `Next puzzle in ${formatCountdown(msUntilNextPuzzle())}`;
         }
@@ -262,10 +347,6 @@ export class GameUI {
         this.progress.save(this.puzzle, this.game);
     }
 
-    startClock() {
-        if (this.game.startedAt === null) this.game.startedAt = Date.now();
-    }
-
     recordRank(rank) {
         if (typeof rank !== "number") return;
         if (this.game.bestRank === null || rank < this.game.bestRank) this.game.bestRank = rank;
@@ -275,8 +356,9 @@ export class GameUI {
         const g = this.game;
         return {
             elapsed_seconds: g.startedAt === null ? 0 : (Date.now() - g.startedAt) / 1000,
+            guess_count: g.entries.filter((e) => e.type === "guess" && e.valid).length,
+            clue_count: g.clues.length,
             hint_count: g.hintCount,
-            similar_count: g.similarCount,
             best_rank: g.bestRank,
         };
     }
@@ -330,7 +412,7 @@ export class GameUI {
         }
         this.nextPuzzleEl.classList.toggle("hidden", this.puzzle !== this.today);
         this.playPastButton.classList.remove("hidden");
-        this.renderClueButton(); // clears the clue note
+        this.renderHelp(); // clears the help note
         this.renderStreak();
         this.tick();
     }
@@ -343,28 +425,43 @@ export class GameUI {
             this.clueList.appendChild(li);
         }
         this.cluesSection.classList.toggle("hidden", this.game.clues.length === 0);
-        this.renderClueButton();
+        this.renderHelp();
     }
 
-    renderClueButton() {
+    // The Clue and Hint buttons, and a note on what unlocks next.
+    renderHelp() {
         const g = this.game;
+        const next = this.gameOver ? null : nextHelp(g);
+        const { needed, stuck } = helpProgress(g);
+        const onlyAnswerLeft = g.bestRank !== null && g.bestRank <= 2;
+        const ready = next !== null && needed === 0 && !(next.kind === "hint" && onlyAnswerLeft);
+
+        this.clueButton.textContent =
+            next && next.kind === "clue" ? `🧩 Clue ${next.number} (−${next.cost})` : "🧩 Clue";
+        this.hintButton.textContent =
+            next && next.kind === "hint" ? `🧠 Hint ${next.number} (−${next.cost})` : "🧠 Hint";
+        this.clueButton.disabled = !(ready && next.kind === "clue") || this.helpBusy;
+        this.hintButton.disabled = !(ready && next.kind === "hint") || this.helpBusy;
+
         let note = "";
-        let ready = false;
-        if (!this.gameOver) {
-            if (g.clueTotal === 0) {
-                note = "This puzzle has no clues.";
-            } else if (g.clueTotal !== null && g.clues.length >= g.clueTotal) {
-                note = "That was the last clue.";
+        if (this.gameOver) {
+            note = "";
+        } else if (next === null) {
+            note = "You've used every clue and hint.";
+        } else if (next.kind === "hint" && onlyAnswerLeft) {
+            note = "Your best is #2, so only the answer is closer: no hint can help.";
+        } else {
+            const name = `${next.kind === "clue" ? "Clue" : "Hint"} ${next.number}`;
+            const noClues =
+                next.kind === "hint" && g.clueTotal === 0 && g.hintCount === 0 ? "This puzzle has no clues. " : "";
+            if (needed === 0) {
+                note = `${noClues}${name} is ready (−${next.cost} points).`;
             } else {
-                const needed = guessesUntilClue(g);
-                ready = needed === 0;
-                note = ready
-                    ? "Stuck? A clue is ready."
-                    : `Stuck? A clue unlocks after ${needed} more guess${needed === 1 ? "" : "es"} without a new best.`;
+                const how = stuck ? " without a new best" : "";
+                note = `${noClues}${name} unlocks after ${guessCount(needed)}${how}.`;
             }
         }
-        this.clueButton.disabled = !ready || this.clueBusy;
-        this.clueNote.textContent = note;
+        this.helpNote.textContent = note;
     }
 
     applyHotnessColor(hotness) {
@@ -386,7 +483,7 @@ export class GameUI {
         this.game.entries.push(entry);
         this.save();
         this.addToHistory(entry);
-        this.renderClueButton();
+        this.renderHelp();
     }
 
     // --- Actions ----------------------------------------------------------
@@ -400,7 +497,6 @@ export class GameUI {
 
         const puzzle = this.puzzle;
         this.guessButton.disabled = true;
-        this.startClock();
 
         try {
             const data = await this.api.makeGuess(puzzle, word, this.stats());
@@ -409,6 +505,7 @@ export class GameUI {
             if (data.valid) this.recordRank(data.rank);
             if (data.valid && data.is_correct) {
                 this.game.status = "won";
+                this.game.finishedAt = Date.now();
                 this.game.score = data.score;
                 this.game.onTheDay = puzzle === puzzleOnDate(this.launchDate);
             }
@@ -428,52 +525,50 @@ export class GameUI {
         }
     }
 
-    handleSimilarWordClick() {
-        return this.showSuggestion("similar word", this.similarWordButton, "similarCount", (p, best, used) =>
-            this.api.getSimilarWord(p, best, used),
-        );
+    // Is this kind of help unlocked right now?
+    helpReady(kind) {
+        if (this.gameOver || this.helpBusy) return false;
+        const next = nextHelp(this.game);
+        return next !== null && next.kind === kind && helpProgress(this.game).needed === 0;
     }
 
-    handleHintClick() {
-        return this.showSuggestion("hint", this.hintButton, "hintCount", (p, best, used) =>
-            this.api.getHint(p, best, used),
-        );
-    }
-
-    // Shared by Similar Word and Hint: fetch a suggested word and show it.
-    async showSuggestion(type, button, counter, fetchSuggestion) {
-        if (this.gameOver) return;
+    async handleHintClick() {
+        if (!this.helpReady("hint")) return;
 
         const puzzle = this.puzzle;
-        const label = SUGGESTION_LABELS[type];
-        button.disabled = true;
-        this.startClock();
+        this.helpBusy = true;
+        this.renderHelp();
         try {
-            const s = await fetchSuggestion(puzzle, this.game.bestRank, this.game[counter]);
+            const s = await this.api.getHint(puzzle, this.game.bestRank, this.game.hintCount);
             if (puzzle !== this.puzzle) return;
 
-            this.game[counter] += 1;
+            this.game.hintCount += 1;
             this.recordRank(s.rank);
             this.showResultLine(
-                `${label}: try "${s.word}" — rank #${s.rank}/${s.total}, similarity=${s.similarity.toFixed(4)} (${s.percentile.toFixed(1)} percentile) — ${s.hotness}`,
+                `🧠 Hint: try "${s.word}" — rank #${s.rank}/${s.total}, similarity=${s.similarity.toFixed(4)} (${s.percentile.toFixed(1)} percentile) — ${s.hotness}`,
             );
             this.applyHotnessColor(s.hotness);
-            this.record({ ...s, type });
+            this.record({ ...s, type: "hint" });
         } catch (err) {
-            console.error(`${type} request failed:`, err);
-            this.showResultLine(`Error fetching a ${type} from the server. Please try again.`, "result-text-error");
+            if (puzzle !== this.puzzle) return;
+            if (err.status === 409) {
+                this.showResultLine("No hint can help now: only the answer is closer than your best.", "result-text-error");
+            } else {
+                console.error("Hint request failed:", err);
+                this.showResultLine("Error fetching a hint from the server. Please try again.", "result-text-error");
+            }
         } finally {
-            if (!this.gameOver) button.disabled = false;
+            this.helpBusy = false;
+            if (puzzle === this.puzzle) this.renderHelp();
         }
     }
 
     async handleClueClick() {
-        if (this.gameOver || this.clueBusy || guessesUntilClue(this.game) > 0) return;
+        if (!this.helpReady("clue")) return;
 
         const puzzle = this.puzzle;
-        this.clueBusy = true;
-        this.renderClueButton();
-        this.startClock();
+        this.helpBusy = true;
+        this.renderHelp();
         try {
             const data = await this.api.getClue(puzzle, this.game.clues.length);
             if (puzzle !== this.puzzle) return;
@@ -494,8 +589,8 @@ export class GameUI {
                 this.showResultLine("Error fetching a clue from the server. Please try again.", "result-text-error");
             }
         } finally {
-            this.clueBusy = false;
-            if (puzzle === this.puzzle) this.renderClueButton();
+            this.helpBusy = false;
+            if (puzzle === this.puzzle) this.renderHelp();
         }
     }
 
@@ -509,6 +604,7 @@ export class GameUI {
             if (puzzle !== this.puzzle) return;
 
             this.game.status = "quit";
+            this.game.finishedAt = Date.now();
             this.game.score = data.score;
             this.record({ ...data, type: "quit" });
             this.showFinalResult();
@@ -520,15 +616,15 @@ export class GameUI {
     }
 
     disableControls() {
-        for (const el of [this.inputEl, this.guessButton, this.similarWordButton, this.hintButton, this.quitButton, this.clueButton]) {
+        for (const el of [this.inputEl, this.guessButton, this.hintButton, this.quitButton, this.clueButton]) {
             el.disabled = true;
         }
     }
 
     enableControls() {
-        for (const el of [this.inputEl, this.guessButton, this.similarWordButton, this.hintButton, this.quitButton]) {
+        for (const el of [this.inputEl, this.guessButton, this.quitButton]) {
             el.disabled = false;
         }
-        this.renderClueButton();
+        this.renderHelp();
     }
 }
