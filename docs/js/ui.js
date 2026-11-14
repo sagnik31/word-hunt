@@ -1,6 +1,7 @@
 import {
     Progress,
     dateOfPuzzle,
+    deviceId,
     formatDate,
     msUntilNextPuzzle,
     puzzleOnDate,
@@ -26,6 +27,10 @@ const HINT_COSTS = [20, 25];
 const HELP_TYPES = new Set(["clue", "hint", "similar word"]);
 
 const guessCount = (n) => `${n} more guess${n === 1 ? "" : "es"}`;
+const players = (n) => `${n} player${n === 1 ? "" : "s"}`;
+
+// "6–10", or "101+" for the last bar.
+const bucketLabel = (b) => (b.high === null ? `${b.low}+` : `${b.low}–${b.high}`);
 
 // How many more guesses until the next help unlocks, and whether they must
 // be without a new best (false while the first-help guess count is short).
@@ -149,6 +154,12 @@ export class GameUI {
         this.startSection = $("start");
         this.playButton = $("play-button");
         this.clockEl = $("clock");
+        this.standingEl = $("standing");
+        this.standingBeat = $("standing-beat");
+        this.standingRate = $("standing-rate");
+        this.chartEl = $("standing-chart");
+        this.chartBars = $("chart-bars");
+        this.deviceId = deviceId(); // counts this browser once per puzzle
 
         this.formEl.addEventListener("submit", (e) => this.handleGuessSubmit(e));
         this.playButton.addEventListener("click", () => this.handlePlayClick());
@@ -225,6 +236,7 @@ export class GameUI {
         if (!this.gameOver) this.loadClueTotal(puzzle);
 
         this.resultSection.classList.add("hidden");
+        this.standingEl.classList.add("hidden");
         this.nextPuzzleEl.classList.add("hidden");
         this.playPastButton.classList.add("hidden");
         this.inputEl.value = "";
@@ -415,6 +427,91 @@ export class GameUI {
         this.renderHelp(); // clears the help note
         this.renderStreak();
         this.tick();
+        this.loadStanding(this.puzzle);
+    }
+
+    // --- How the result compares with the puzzle's on-the-day players ------
+
+    // The first request after the database has been idle can take a second
+    // or so (Neon wakes up), hence the loading line. If results are off or
+    // unreachable, the panel just goes away.
+    async loadStanding(puzzle) {
+        this.standingEl.classList.remove("hidden");
+        this.standingBeat.textContent = "Loading how others did…";
+        this.standingRate.textContent = "";
+        this.chartEl.classList.add("hidden");
+        try {
+            const data = await this.api.getResults(puzzle, this.deviceId, this.game.score);
+            if (puzzle !== this.puzzle || !this.gameOver) return;
+            this.renderStanding(data);
+        } catch (err) {
+            if (puzzle !== this.puzzle) return;
+            console.warn("Could not load the day's results:", err);
+            this.standingEl.classList.add("hidden");
+        }
+    }
+
+    renderStanding(data) {
+        const today = this.puzzle === this.today;
+        const n = data.players;
+        let beat;
+        if (data.beat_percent !== null) {
+            beat = today
+                ? `You beat ${data.beat_percent}% of today's players.`
+                : `${data.counted ? "You beat" : "You'd have beaten"} ${data.beat_percent}% of the players on its day.`;
+        } else if (n === 0) {
+            beat = today ? "No one else has finished today's puzzle yet." : "No one played this puzzle on its day.";
+        } else if (n < data.min_players) {
+            beat = today ? `Only ${players(n)} so far.` : `Only ${players(n)} played it on its day.`;
+        } else {
+            beat = today ? `${players(n)} so far today.` : `${players(n)} played it on its day.`;
+        }
+        this.standingBeat.textContent = beat;
+
+        let rate = n > 0 ? `Solve rate: ${data.solve_rate}% (${data.solvers} of ${n})` : "";
+        if (!data.counted && !today) rate += `${rate ? " · " : ""}Past puzzles played later aren't counted.`;
+        this.standingRate.textContent = rate;
+
+        this.renderChart(data.buckets, data.solvers);
+    }
+
+    // One bar per range of guess counts; the player's own bar is highlighted
+    // when they solved.
+    renderChart(buckets, solvers) {
+        this.chartBars.textContent = "";
+        this.chartEl.classList.toggle("hidden", solvers === 0);
+        if (solvers === 0) return;
+
+        const g = this.game;
+        const mine = g.status === "won"
+            ? g.entries.filter((e) => e.type === "guess" && e.valid).length
+            : null;
+        const most = Math.max(...buckets.map((b) => b.count));
+        for (const b of buckets) {
+            const you = mine !== null && mine >= b.low && (b.high === null || mine <= b.high);
+            const li = document.createElement("li");
+            if (you) li.classList.add("chart-you");
+
+            const label = document.createElement("span");
+            label.className = "chart-label";
+            label.textContent = bucketLabel(b);
+
+            const track = document.createElement("span");
+            track.className = "chart-track";
+            const fill = document.createElement("span");
+            fill.className = "chart-fill";
+            fill.style.display = "block";
+            fill.style.width = b.count ? `${Math.max(2, (100 * b.count) / most)}%` : "0";
+            track.appendChild(fill);
+
+            const count = document.createElement("span");
+            count.className = "chart-count";
+            count.textContent = you ? `${b.count} · you` : String(b.count);
+
+            li.append(label, track, count);
+            li.title = `${b.count} solver${b.count === 1 ? "" : "s"} took ${bucketLabel(b)} guesses${you ? " (you too)" : ""}`;
+            this.chartBars.appendChild(li);
+        }
     }
 
     renderClues() {
@@ -499,7 +596,7 @@ export class GameUI {
         this.guessButton.disabled = true;
 
         try {
-            const data = await this.api.makeGuess(puzzle, word, this.stats());
+            const data = await this.api.makeGuess(puzzle, word, this.stats(), this.deviceId);
             if (puzzle !== this.puzzle) return; // the player moved to another puzzle
 
             if (data.valid) this.recordRank(data.rank);
@@ -600,7 +697,7 @@ export class GameUI {
         const puzzle = this.puzzle;
         this.disableControls();
         try {
-            const data = await this.api.quitGame(puzzle, this.stats());
+            const data = await this.api.quitGame(puzzle, this.stats(), this.deviceId);
             if (puzzle !== this.puzzle) return;
 
             this.game.status = "quit";

@@ -32,6 +32,16 @@ SCHEDULE_KEY_FILE = BASE_DIR / "schedule.key"
 # strong, keyed by the same codes as the schedule so the file names no words.
 CLUES_PATH = Path(os.environ.get("WORDHUNT_CLUES_PATH", DATA_DIR / "clues.json"))
 
+# Results database for "you beat X% of today's players": a Postgres URL
+# (Neon's pooled connection string, set on Render), or sqlite:///path for a
+# local run. Unset, the game works as before and the results features are off.
+# Never commit it.
+DATABASE_URL_ENV = "DATABASE_URL"
+
+
+def database_url() -> Optional[str]:
+    return os.environ.get(DATABASE_URL_ENV, "").strip() or None
+
 
 def schedule_key() -> Optional[str]:
     key = os.environ.get("WORDHUNT_SCHEDULE_KEY", "").strip()

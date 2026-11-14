@@ -2,6 +2,7 @@
 // with its guess history, help used, timer and result. The server keeps none.
 
 const STORAGE_KEY = "wordhunt:v1";
+const DEVICE_KEY = "wordhunt:device";
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function readAll() {
@@ -91,6 +92,32 @@ export class Progress {
         }
         return { current, best };
     }
+}
+
+// A random ID for this browser, so the server counts one result per device
+// per puzzle. It's not tied to an account and says nothing about the player.
+// Null if storage is blocked: the game then just isn't counted.
+export function deviceId() {
+    try {
+        let id = localStorage.getItem(DEVICE_KEY);
+        if (!id) {
+            id = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : randomId();
+            localStorage.setItem(DEVICE_KEY, id);
+        }
+        return id;
+    } catch (err) {
+        console.warn("Could not keep a device ID:", err);
+        return null;
+    }
+}
+
+// A version-4 UUID, for browsers without crypto.randomUUID (non-HTTPS pages).
+function randomId() {
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 // --- Dates (puzzles change at midnight UTC) ---------------------------------

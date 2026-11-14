@@ -11,4 +11,7 @@ def health(request: Request) -> HealthResponse:
         getattr(request.app.state, "engine", None) is not None
         and getattr(request.app.state, "schedule", None) is not None
     )
-    return HealthResponse(status="ok" if ready else "degraded", puzzle_ready=ready)
+    # Don't query the database here: frequent health checks would keep Neon
+    # from ever pausing.
+    results = getattr(request.app.state, "results", None) is not None
+    return HealthResponse(status="ok" if ready else "degraded", puzzle_ready=ready, results=results)

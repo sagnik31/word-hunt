@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -13,10 +13,16 @@ class PlayerStats(BaseModel):
     best_rank: Optional[int] = Field(None, ge=1)
 
 
+# The browser's random device ID, so results count once per device. Anything
+# that doesn't look like one is ignored rather than refused.
+DeviceId = Optional[str]
+
+
 class GuessRequest(BaseModel):
     puzzle: int
     word: str
     stats: PlayerStats = Field(default_factory=PlayerStats)
+    device_id: DeviceId = Field(None, max_length=100)
 
 
 class HintRequest(BaseModel):
@@ -33,6 +39,7 @@ class ClueRequest(BaseModel):
 class QuitRequest(BaseModel):
     puzzle: int
     stats: PlayerStats = Field(default_factory=PlayerStats)
+    device_id: DeviceId = Field(None, max_length=100)
 
 
 class TodayResponse(BaseModel):
@@ -60,6 +67,7 @@ class GuessResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     puzzle_ready: bool
+    results: bool  # a results database is configured (not checked: Neon may be asleep)
 
 
 class PuzzleResponse(BaseModel):
@@ -85,3 +93,22 @@ class ClueResponse(BaseModel):
 class QuitResponse(BaseModel):
     answer: str
     score: Optional[int] = None
+
+
+class GuessBucket(BaseModel):
+    low: int
+    high: Optional[int] = None  # None: no upper limit
+    count: int  # solvers whose guess count falls in low..high
+
+
+class ResultsResponse(BaseModel):
+    """How a player compares with the puzzle's on-the-day players."""
+
+    puzzle: int
+    players: int  # results stored for the puzzle's own day
+    solvers: int
+    solve_rate: Optional[int] = None  # percent; None with no players
+    beat_percent: Optional[int] = None  # None below min_players, or with no score
+    counted: bool  # this device's result is one of the players
+    min_players: int
+    buckets: List[GuessBucket]

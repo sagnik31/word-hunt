@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from backend.api import app
 from backend.daily import DailySchedule, today_utc
+from backend.results import MIN_PLAYERS, Result, SQLiteResultStore
 
 # Yesterday's puzzle (#1) is "piano", today's (#2) is "apple", #3 is tomorrow.
 WORDS = ["piano", "apple", "tiger"]
@@ -18,7 +19,14 @@ def client():
     with TestClient(app) as c:
         app.state.schedule = DailySchedule(WORDS, today_utc() - timedelta(days=1))
         app.state.clues = {"apple": APPLE_CLUES}
+        app.state.results = SQLiteResultStore()  # in memory; no real database
         yield c
+
+
+@pytest.fixture
+def fresh_results(client):
+    app.state.results = SQLiteResultStore()
+    yield app.state.results
 
 
 def test_read_root(client):
@@ -28,7 +36,7 @@ def test_read_root(client):
 
 
 def test_health_check(client):
-    assert client.get("/health").json() == {"status": "ok", "puzzle_ready": True}
+    assert client.get("/health").json() == {"status": "ok", "puzzle_ready": True, "results": True}
 
 
 def test_today_names_the_current_puzzle(client):
@@ -133,3 +141,94 @@ def test_puzzle_without_clues_says_so(client):
 
 def test_clues_for_future_puzzles_are_refused(client):
     assert client.post("/clue", json={"puzzle": 3, "clues_used": 0}).status_code == 404
+
+
+# --- Results (0.6) ----------------------------------------------------------
+
+ME = "11111111-2222-4333-8444-555555555555"
+WIN_STATS = {"elapsed_seconds": 90, "guess_count": 7, "clue_count": 0, "hint_count": 0}
+
+
+def test_a_solve_on_its_day_is_stored_once(client, fresh_results):
+    body = {"puzzle": 2, "word": "apple", "stats": WIN_STATS, "device_id": ME}
+    assert client.post("/guess", json=body).json()["score"] == 100
+    # A second solve from the same device (another tab, say) doesn't count.
+    client.post("/guess", json={**body, "stats": {**WIN_STATS, "elapsed_seconds": 3000}})
+    [row] = fresh_results.day(2)
+    assert (row.solved, row.score, row.guesses) == (True, 100, 8)
+
+
+def test_a_quit_on_its_day_is_stored(client, fresh_results):
+    stats = {"elapsed_seconds": 600, "guess_count": 12, "clue_count": 1, "best_rank": 4}
+    client.post("/quit", json={"puzzle": 2, "stats": stats, "device_id": ME})
+    row = fresh_results.day(2)[0]
+    assert (row.solved, row.score, row.guesses) == (False, 14, 12)
+
+
+def test_archive_plays_and_bad_device_ids_are_not_stored(client, fresh_results):
+    client.post("/guess", json={"puzzle": 1, "word": "piano", "device_id": ME})
+    client.post("/quit", json={"puzzle": 1, "device_id": ME})
+    response = client.post("/guess", json={"puzzle": 2, "word": "apple", "device_id": "no good!"})
+    assert response.status_code == 200
+    client.post("/guess", json={"puzzle": 2, "word": "apple"})  # no device ID at all
+    assert fresh_results.day(1) == [] and fresh_results.day(2) == []
+
+
+def test_results_compare_against_the_days_players(client, fresh_results):
+    for i in range(MIN_PLAYERS):
+        fresh_results.record(2, f"other-device-{i:02d}", Result(True, 50 + i, 10, 300, 0, 0))
+    body = {"puzzle": 2, "word": "apple", "stats": WIN_STATS, "device_id": ME}
+    client.post("/guess", json=body)
+    data = client.get(f"/results/2?device_id={ME}").json()
+    assert data["counted"] is True
+    assert data["players"] == MIN_PLAYERS + 1
+    assert data["beat_percent"] == 100
+    assert data["solve_rate"] == 100
+    assert {"low": 6, "high": 10, "count": MIN_PLAYERS + 1} in data["buckets"]
+
+
+def test_archive_results_use_the_sent_score(client, fresh_results):
+    for i in range(MIN_PLAYERS):
+        fresh_results.record(1, f"other-device-{i:02d}", Result(True, 40 + 10 * (i % 4), 10, 300, 0, 0))
+    data = client.get(f"/results/1?device_id={ME}&score=50").json()
+    assert data["counted"] is False
+    # Scores 40, 50, 60, 70 (x3, x3, x2, x2): 3 below, 3 ties -> 4.5 of 10.
+    assert data["beat_percent"] == 45
+
+
+def test_few_players_and_future_puzzles(client, fresh_results):
+    data = client.get("/results/2?score=80").json()
+    assert data["players"] == 0 and data["beat_percent"] is None
+    assert client.get("/results/3").status_code == 404
+
+
+def test_results_off_without_a_database(client):
+    store = app.state.results
+    app.state.results = None
+    try:
+        assert client.get("/health").json()["results"] is False
+        assert client.get("/results/2").status_code == 503
+        body = {"puzzle": 2, "word": "apple", "device_id": ME}
+        assert client.post("/guess", json=body).json()["is_correct"] is True
+        assert client.post("/quit", json={"puzzle": 2, "device_id": ME}).status_code == 200
+    finally:
+        app.state.results = store
+
+
+class BrokenStore:
+    def record(self, *args):
+        raise ConnectionError("database unreachable")
+
+    def day(self, puzzle):
+        raise ConnectionError("database unreachable")
+
+
+def test_a_database_error_never_breaks_play(client):
+    store = app.state.results
+    app.state.results = BrokenStore()
+    try:
+        body = {"puzzle": 2, "word": "apple", "device_id": ME}
+        assert client.post("/guess", json=body).json()["is_correct"] is True
+        assert client.get("/results/2").status_code == 503
+    finally:
+        app.state.results = store

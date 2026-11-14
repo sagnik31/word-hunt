@@ -19,8 +19,11 @@ The backend runs on Render's free tier and sleeps when idle, so the first reques
    - The first help unlocks after 10 guesses, and each one needs 5 guesses in a row, since the last help, without a new best rank. The buttons show how many more guesses that takes. A puzzle without clues goes straight to Hints, with the same gates.
 7. **Quit** at any time to reveal the answer and receive partial credit.
 8. Solve each day's puzzle on its day to build a **streak**. **Past puzzles** lists every earlier day; you can play any of them, but they don't count towards your streak.
+9. When you finish, you see how you did against the day's other players: "You beat 62% of today's players" (by score, ties counting half), the day's solve rate, and a chart of how many guesses solvers took, with your bar highlighted. Only plays finished on the puzzle's own day count. A past puzzle shows how you'd have done against that day's players but isn't added to them. Until about 10 people have played, it says "Only N players so far" instead of a percentage.
 
 Your progress (guesses, help used, results and streak) is saved in your browser, so you can close the tab and pick up where you left off. It doesn't follow you to another browser or device.
+
+For the day's comparison, the server stores one result per browser per puzzle: solved or quit, score, guesses, time, and clues and hints used. Your browser is identified only by a random ID it makes up and keeps in `localStorage`. There are no accounts, and nothing personal is stored.
 
 The answer is always an everyday, picturable noun such as `toothpaste`, `magnet` or `yogurt`, drawn from a curated list of about 2,500 words.
 
@@ -86,17 +89,19 @@ A word counts as a proper noun when the WordNet dictionary only knows it with a 
 
 **Backend.** At startup, the game engine loads the embeddings and word forms once, and decodes the schedule with the key (about 115 MB of memory). The server keeps no player state: every request names a puzzle number, and the server refuses puzzles that haven't been released yet. Ranking every guess word against an answer takes a few milliseconds and is cached for recent answers. Scores are computed from the stats the browser sends (time since Play, guesses, clues and hints used, best rank).
 
+**Results.** When `DATABASE_URL` is set, a winning guess or a quit that arrives on the puzzle's own UTC day is stored in Postgres ([Neon](https://neon.tech)'s free plan in production): one row per device ID per puzzle, and the first result wins. The score stored is the one the server computed. `GET /results/{n}` compares a finished play with that day's rows. The code is in [`backend/results.py`](backend/results.py). The tests use SQLite in memory with the same SQL, so they need no database. Without `DATABASE_URL`, the game works as before, `/results` returns 503 and the browser just doesn't show the comparison. The server never connects at startup, and `/health` never touches the database, so a paused or unreachable database can't stop it starting or keep Neon awake. Neon pauses after about 5 idle minutes and drops the connection; the next query reconnects, which makes the first request after a pause about a second slower.
+
 **Frontend.** Plain HTML, CSS and JavaScript ES modules with no build step, served from [`docs/`](docs/) by GitHub Pages. It talks to the backend over a small REST API and keeps each player's progress in `localStorage`.
 
 ### Tech stack
 
 | Layer    | Technology                                                     |
 | -------- | -------------------------------------------------------------- |
-| Backend  | Python, FastAPI, Uvicorn, Pydantic, NumPy                      |
+| Backend  | Python, FastAPI, Uvicorn, Pydantic, NumPy, psycopg             |
 | Frontend | HTML, CSS, vanilla JavaScript (ES modules)                     |
 | Data     | GloVe 6B 300d embeddings, Brysbaert et al. concreteness ratings, NLTK WordNet (offline only) |
 | Testing  | pytest, HTTPX (via FastAPI's `TestClient`)                     |
-| Hosting  | Render (API), GitHub Pages (frontend)                          |
+| Hosting  | Render (API), GitHub Pages (frontend), Neon Postgres (results) |
 
 ## Running locally
 
@@ -155,6 +160,8 @@ uvicorn backend.api:app --reload --port 8000
 
 The API is now at `http://localhost:8000`, with interactive documentation at `http://localhost:8000/docs`. On Windows, `run_backend.bat` does the same thing using the `.venv` environment.
 
+The results comparison is off unless `DATABASE_URL` is set. To try it locally without Postgres, point it at a SQLite file outside the repository, such as `DATABASE_URL=sqlite:///../results.db`. A Postgres URL (`postgresql://...`) works too, for example a separate Neon branch for testing.
+
 ### 4. Point the frontend at your local backend
 
 [`docs/js/config.js`](docs/js/config.js) points at the deployed backend. Don't commit a localhost URL there. Instead, copy `docs/` to a scratch folder and change `API_BASE_URL` in the copy:
@@ -191,15 +198,16 @@ Use `python -m pytest` rather than plain `pytest`; the former puts the repositor
 
 | Method | Endpoint        | Description                                                         |
 | ------ | --------------- | ------------------------------------------------------------------- |
-| GET    | `/health`       | Reports whether the engine and the schedule loaded.                 |
+| GET    | `/health`       | Reports whether the engine and the schedule loaded, and whether a results database is configured (`results`; not checked, so Neon can stay asleep). |
 | GET    | `/today`        | Today's puzzle number, the UTC date, the launch date and the seconds until the next puzzle. Every puzzle from 1 to today's is playable. |
-| POST   | `/guess`        | Body: `{"puzzle": 7, "word": "...", "stats": {...}}`. Returns rank, similarity, percentile and temperature label. `matched` holds the base word when a plural or verb form was scored as it (`cats` → `cat`). Includes the score on a correct guess, computed from `stats`. |
+| POST   | `/guess`        | Body: `{"puzzle": 7, "word": "...", "stats": {...}, "device_id": "..."}`. Returns rank, similarity, percentile and temperature label. `matched` holds the base word when a plural or verb form was scored as it (`cats` → `cat`). Includes the score on a correct guess, computed from `stats`; a correct guess on the puzzle's own day is stored as this device's result. |
 | GET    | `/puzzle/{n}`   | `{"puzzle", "clue_total"}`: how many written clues puzzle `n` has (0 when none). |
 | POST   | `/hint`         | Body: `{"puzzle": 7, "best_rank": 120, "hints_used": 0}`. Returns an everyday word ranked #6–10 (first hint) or #2–5 (second), always better than `best_rank`. 409 when no hint is left to give. |
 | POST   | `/clue`         | Body: `{"puzzle": 7, "clues_used": 0}`. Returns the next written clue, `{"clue", "number", "total"}`. 404 if the puzzle has no clues, 409 when they're used up. |
-| POST   | `/quit`         | Body: `{"puzzle": 7, "stats": {...}}`. Reveals the answer and returns the partial score. |
+| POST   | `/quit`         | Body: `{"puzzle": 7, "stats": {...}, "device_id": "..."}`. Reveals the answer and returns the partial score; a quit on the puzzle's own day is stored. |
+| GET    | `/results/{n}`  | Query: `device_id`, `score`. How a finished play compares with puzzle `n`'s on-the-day players: `players`, `solvers`, `solve_rate` (%), `beat_percent` (ties count half; `null` below `min_players`, 10), `counted` (this device's result is one of them, and is then used instead of `score`) and `buckets`, the guess-count chart for solvers. 503 when results are off. |
 
-`stats` is the player's progress on that puzzle: `elapsed_seconds` since Play was pressed, `guess_count` (valid guesses before this request), `clue_count`, `hint_count` and `best_rank`. A puzzle that hasn't been released yet returns 404.
+`stats` is the player's progress on that puzzle: `elapsed_seconds` since Play was pressed, `guess_count` (valid guesses before this request), `clue_count`, `hint_count` and `best_rank`. A puzzle that hasn't been released yet returns 404. `device_id` is optional: the browser's random ID, so results count once per device. One that doesn't look like an ID (8-64 letters, digits and dashes) is ignored, never refused.
 
 Full request and response schemas are available at `/docs` while the server is running.
 
@@ -267,6 +275,7 @@ word-hunt/
 │   ├── game.py           WordGameEngine: loads data, ranks words against an answer
 │   ├── daily.py          Daily schedule: puzzle numbers, dates, decoding answers
 │   ├── scoring.py        Final score rules
+│   ├── results.py        Results store (Postgres or SQLite) and the day's comparison
 │   ├── config.py         File paths, launch date, schedule key, CORS origins
 │   ├── schemas.py        Pydantic request and response models
 │   ├── routes/           One router per endpoint
@@ -293,6 +302,8 @@ word-hunt/
 
 **Backend (Render).** Create a web service from the repository with build command `bash build.sh` and start command `bash start.sh`. These install `requirements.txt` and run Uvicorn on the port Render provides. Set the `WORDHUNT_SCHEDULE_KEY` environment variable to the schedule key; without it the server starts but `/health` reports `degraded`.
 
+For the results comparison, create a Neon project (the free plan is enough) and set `DATABASE_URL` on Render to its **pooled** connection string (`postgresql://...-pooler.../...?sslmode=require`). Never commit it. The `results` table is created on the first query. Without `DATABASE_URL`, everything else works and the comparison isn't shown.
+
 **Frontend (GitHub Pages).** In the repository settings, under Pages, deploy from the `main` branch and the `/docs` folder. Set `API_BASE_URL` in `docs/js/config.js` to the Render service URL, and make sure the Pages origin is listed in `CORS_ORIGINS` in `backend/config.py`.
 
 ## Data sources
@@ -304,7 +315,8 @@ word-hunt/
 ## Limitations and roadmap
 
 - **Progress lives in the browser.** Clearing site data resets streaks, and progress doesn't sync between devices.
-- **Scores trust the browser.** The score uses the time, guess and help counts the browser reports, so a determined player could fake them. That only matters once there's a leaderboard.
+- **Scores trust the browser.** The score uses the time, guess and help counts the browser reports, so a determined player could fake them, and anyone who knows the day's answer could post results under made-up device IDs. That skews "you beat X%" but nothing else. It would matter more for a leaderboard.
+- **Midnight edge:** a play counts only if its solve or quit reaches the server on the puzzle's own UTC day, so one finished just after midnight isn't counted.
 - **Clues come from small local models.** The automatic checks catch too-easy and off-meaning clues, but only about half of the subtly wrong ones, so the clues need a human skim. Some answers have no clues.
 - **Under consideration:** leaderboards, timed and category-based modes, and UI polish.
 

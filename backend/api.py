@@ -12,6 +12,7 @@ request names a puzzle number, and the browser sends the player's progress.
   - POST /hint            (reveal a word close to the answer)
   - POST /clue            (the next written clue)
   - POST /quit            (reveal the answer)
+  - GET  /results/{number} (how a finished play compares; needs DATABASE_URL)
 
 Run locally (from the repo root):
   uvicorn backend.api:app --host 0.0.0.0 --port 8000
@@ -23,10 +24,19 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.config import CLUES_PATH, CORS_ORIGINS, LAUNCH_DATE, SCHEDULE_PATH, schedule_key
+from backend.config import (
+    CLUES_PATH,
+    CORS_ORIGINS,
+    DATABASE_URL_ENV,
+    LAUNCH_DATE,
+    SCHEDULE_PATH,
+    database_url,
+    schedule_key,
+)
 from backend.daily import DailySchedule, load_clues
 from backend.game import WordGameEngine
-from backend.routes import guess, health, help, quit, today
+from backend.results import open_store
+from backend.routes import guess, health, help, quit, results, today
 
 
 def load_schedule(engine: WordGameEngine) -> DailySchedule:
@@ -47,6 +57,15 @@ async def lifespan(app: FastAPI):
     app.state.engine = None
     app.state.schedule = None
     app.state.clues = {}
+    # Opening the store doesn't connect: the server starts even if the
+    # database is asleep or unreachable.
+    url = database_url()
+    app.state.results = open_store(url)
+    if app.state.results is None:
+        reason = "unrecognised URL" if url else f"no {DATABASE_URL_ENV}"
+        print(f"[startup] Results are off ({reason})")
+    else:
+        print(f"[startup] Results on ({type(app.state.results).__name__})")
     try:
         print("[startup] Initializing WordGameEngine...")
         app.state.engine = WordGameEngine()
@@ -59,6 +78,8 @@ async def lifespan(app: FastAPI):
         print(f"[startup] Failed to initialize: {e}")
         traceback.print_exc()
     yield
+    if app.state.results is not None:
+        app.state.results.close()
 
 
 app = FastAPI(
@@ -81,11 +102,12 @@ app.include_router(today.router)
 app.include_router(guess.router)
 app.include_router(help.router)
 app.include_router(quit.router)
+app.include_router(results.router)
 
 
 @app.get("/")
 def root():
     return {
         "message": "Word Hot-Cold Game API",
-        "endpoints": ["/health", "/today", "/puzzle/{number}", "/guess", "/hint", "/clue", "/quit", "/docs"],
+        "endpoints": ["/health", "/today", "/puzzle/{number}", "/guess", "/hint", "/clue", "/quit", "/results/{number}", "/docs"],
     }
