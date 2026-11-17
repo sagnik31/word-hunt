@@ -245,3 +245,24 @@ def test_a_database_error_never_breaks_play(client):
         assert client.get("/results/2").status_code == 503
     finally:
         app.state.results = store
+
+
+@pytest.mark.parametrize("seconds", ["Infinity", "NaN", "1e300"])
+@pytest.mark.parametrize("route, word", [("/quit", None), ("/guess", "apple")])
+def test_an_impossible_clock_is_refused(client, route, word, seconds):
+    # Hand-made JSON; a browser never sends these. They used to give a 500.
+    body = '{"puzzle": 2, %s"stats": {"elapsed_seconds": %s, "best_rank": 4}}' % (
+        f'"word": "{word}", ' if word else "",
+        seconds,
+    )
+    response = client.post(route, content=body, headers={"Content-Type": "application/json"})
+    assert response.status_code == 422
+
+
+def test_counts_too_big_for_the_results_table_are_refused(client):
+    stats = {"guess_count": 10**12}
+    assert client.post("/quit", json={"puzzle": 2, "stats": stats}).status_code == 422
+
+
+def test_a_very_long_word_is_refused(client):
+    assert client.post("/guess", json={"puzzle": 2, "word": "a" * 1000}).status_code == 422

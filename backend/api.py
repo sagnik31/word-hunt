@@ -21,8 +21,10 @@ Run locally (from the repo root):
 import traceback
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from backend.config import (
     CLUES_PATH,
@@ -96,6 +98,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+    # FastAPI's own handler echoes the bad input back, and an Infinity or NaN
+    # in it can't be written as JSON (a 500). Say what was wrong, not what.
+    errors = [{key: e[key] for key in ("type", "loc", "msg") if key in e} for e in exc.errors()]
+    return JSONResponse(status_code=422, content={"detail": errors})
+
 
 app.include_router(health.router)
 app.include_router(today.router)

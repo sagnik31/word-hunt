@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 
 import numpy as np
@@ -29,6 +30,20 @@ def _word_at_rank(ranking, rank):
 
 
 # --- Ranking ----------------------------------------------------------------
+def test_ranking_cache_is_safe_across_threads(engine, monkeypatch):
+    # Endpoints run on a thread pool; a tiny cache makes evictions collide.
+    monkeypatch.setattr(engine, "CACHE_SIZE", 1)
+    words = [str(w) for w in engine.words[:3]]
+
+    def play(n):
+        for k in range(40):
+            assert engine.ranking(words[(n + k) % 3]).answer == words[(n + k) % 3]
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(play, range(8)))
+    assert len(engine._rankings) <= 1
+
+
 
 
 def test_ranking_covers_every_other_guess_word(engine, ranking):

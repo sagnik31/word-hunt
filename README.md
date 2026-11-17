@@ -4,14 +4,14 @@ A daily word-guessing game where the only clue is meaning. Every day at midnight
 
 **Play it:** [sagnik31.github.io/word-hunt](https://sagnik31.github.io/word-hunt/)
 
-The backend runs on Render's free tier and sleeps when idle, so the first request after a quiet period can take up to a minute.
+The backend runs on Render's free tier and sleeps when idle, so the first request after a quiet period can take up to a minute. The page says it's waking the server, and tries a few times before it gives up.
 
 ## How to play
 
 1. Press **Play** to start. The clock starts then and keeps running until you solve or quit, even if you close the page.
 2. Guess any common English word: a noun, verb, adjective or anything else. The game shows its rank among all ~31,000 words (the answer is rank 1), its similarity score, and a temperature label.
 3. Use the ranks to steer toward the answer. A guess that ranks #4 means you are very close; one that ranks #20,000 means you should change direction.
-4. Plurals and verb forms count as their base word: `cats` is scored as `cat`, and `baked` as `bake`. If the answer is `dog`, guessing `dogs` wins.
+4. Plurals and verb forms count as their base word: `mittens` is scored as `mitten`, and `baked` as `bake`. If the answer is `teapot`, guessing `teapots` wins. Guessing a word you've already tried (or a form of it) just shows its rank again: it doesn't count as a guess.
 5. Proper nouns are never accepted: no names, places, brands, days or months.
 6. Stuck? Help comes in two kinds, and unlocks in this order: Clue 1, 2 and 3, then Hint 1 and 2.
    - **Clues** are written clues, from a broad category ("A kind of home appliance") to close to a definition.
@@ -25,7 +25,7 @@ Your progress (guesses, help used, results and streak) is saved in your browser,
 
 For the day's comparison, the server stores one result per browser per puzzle: solved or quit, score, guesses, time, and clues and hints used. Your browser is identified only by a random ID it makes up and keeps in `localStorage`. There are no accounts, and nothing personal is stored.
 
-The answer is always an everyday, picturable noun such as `toothpaste`, `magnet` or `yogurt`, drawn from a curated list of about 2,500 words.
+The answer is always an everyday, picturable noun such as `wheelbarrow`, `stapler` or `saucepan`, drawn from a curated list of about 2,500 words.
 
 Temperature labels are based on the guess's rank (the answer is rank 1):
 
@@ -79,7 +79,7 @@ The CSV isn't committed. To rebuild the lists, download it to `data/raw/concrete
 - `data/guess_words.txt`: every single word in the dataset that has a GloVe vector and isn't a proper noun (about 31,000).
 - `data/target_words.txt`: the possible answers. These are nouns known by at least 95% of people, with a concreteness rating of at least 4.0 out of 5 and a subtitle frequency of at least 50, minus plurals and the words in `data/target_blocklist.txt` (about 2,500).
 - `data/hint_words.txt`: the guess words a Hint may reveal (about 16,700): known by at least 95% of people, with a subtitle frequency of at least 10, and not an inflected form of another word. That keeps out neighbours such as `skidded` or `marshy`.
-- `data/word_forms.txt`: about 22,000 plurals and verb forms that aren't guess words themselves, each mapped to its base word (`cats` → `cat`). The rules live in [`backend/utils/word_forms.py`](backend/utils/word_forms.py).
+- `data/word_forms.txt`: about 22,000 plurals and verb forms that aren't guess words themselves, each mapped to its base word (`mittens` → `mitten`). The rules live in [`backend/utils/word_forms.py`](backend/utils/word_forms.py).
 
 A word counts as a proper noun when the WordNet dictionary only knows it with a capital letter (`Monday`, `Kleenex`), or when it's listed in `data/proper_nouns.txt`.
 
@@ -194,20 +194,22 @@ python -m pytest
 
 Use `python -m pytest` rather than plain `pytest`; the former puts the repository root on the import path so the `backend` package can be found. The tests also check the generated word lists, for example that no proper noun appears in them.
 
+The same checks (the tests, `ruff check backend` and `node --check` on each file in `docs/js/`) run on GitHub Actions on every push to `main` ([`.github/workflows/checks.yml`](.github/workflows/checks.yml)). There's no schedule key there, so the tests use their own schedule, and the clue-generator tests are skipped because they need WordNet's data.
+
 ## API
 
 | Method | Endpoint        | Description                                                         |
 | ------ | --------------- | ------------------------------------------------------------------- |
 | GET    | `/health`       | Reports whether the engine and the schedule loaded, and whether a results database is configured (`results`; not checked, so Neon can stay asleep). Returns 503 with `"status": "degraded"` when they didn't load, so Render's health check fails a broken deploy. |
 | GET    | `/today`        | Today's puzzle number, the UTC date, the launch date and the seconds until the next puzzle. Every puzzle from 1 to today's is playable. |
-| POST   | `/guess`        | Body: `{"puzzle": 7, "word": "...", "stats": {...}, "device_id": "..."}`. Returns rank, similarity, percentile and temperature label. `matched` holds the base word when a plural or verb form was scored as it (`cats` → `cat`). Includes the score on a correct guess, computed from `stats`; a correct guess on the puzzle's own day is stored as this device's result. |
+| POST   | `/guess`        | Body: `{"puzzle": 7, "word": "...", "stats": {...}, "device_id": "..."}`. Returns rank, similarity, percentile and temperature label. `matched` holds the base word when a plural or verb form was scored as it (`mittens` → `mitten`). Includes the score on a correct guess, computed from `stats`; a correct guess on the puzzle's own day is stored as this device's result. |
 | GET    | `/puzzle/{n}`   | `{"puzzle", "clue_total"}`: how many written clues puzzle `n` has (0 when none). |
 | POST   | `/hint`         | Body: `{"puzzle": 7, "best_rank": 120, "hints_used": 0}`. Returns an everyday word ranked #6–10 (first hint) or #2–5 (second), always better than `best_rank`. 409 when no hint is left to give. |
 | POST   | `/clue`         | Body: `{"puzzle": 7, "clues_used": 0}`. Returns the next written clue, `{"clue", "number", "total"}`. 404 if the puzzle has no clues, 409 when they're used up. |
 | POST   | `/quit`         | Body: `{"puzzle": 7, "stats": {...}, "device_id": "..."}`. Reveals the answer and returns the partial score; a quit on the puzzle's own day is stored. |
 | GET    | `/results/{n}`  | Query: `device_id`, `score`. How a finished play compares with puzzle `n`'s on-the-day players: `players`, `solvers`, `solve_rate` (%), `beat_percent` (ties count half; `null` below `min_players`, 10), `counted` (this device's result is one of them, and is then used instead of `score`) and `buckets`, the guess-count chart for solvers. 503 when results are off. |
 
-`stats` is the player's progress on that puzzle: `elapsed_seconds` since Play was pressed, `guess_count` (valid guesses before this request), `clue_count`, `hint_count` and `best_rank`. A puzzle that hasn't been released yet returns 404. `device_id` is optional: the browser's random ID, so results count once per device. One that doesn't look like an ID (8-64 letters, digits and dashes) is ignored, never refused.
+`stats` is the player's progress on that puzzle: `elapsed_seconds` since Play was pressed, `guess_count` (different words validly guessed before this request; a repeat doesn't count), `clue_count`, `hint_count` and `best_rank`. A puzzle that hasn't been released yet returns 404. `device_id` is optional: the browser's random ID, so results count once per device. One that doesn't look like an ID (8-64 letters, digits and dashes) is ignored, never refused. Values a browser can't send (a non-finite or more than ten-year clock, counts over 100,000, a word over 100 characters) return 422.
 
 Full request and response schemas are available at `/docs` while the server is running.
 
@@ -264,7 +266,7 @@ When a set fails, the writer is told exactly what went wrong (which rule, which 
 
 In a 30-word pilot, 26 words passed, all about the right meaning. About a quarter of the passing sets still had a doubtful detail, mostly in the medium clue (half did before the medium clue was tied to the dictionary meaning). Skim the report before using the clues.
 
-On a CPU it takes about 50 seconds per word, so the full list takes about a day and a half. Progress goes to `data/raw/clue_report.json` after every word (git-ignored, since it names the words), so you can stop and rerun it; `--redo-failed` retries the words that failed. At the end, the passing clues go to `data/clues.json`, keyed by the schedule codes so the public file doesn't say which clues belong to which word. That step needs the schedule key; `--export-only` redoes just that step. Puzzles without clues still work: the Clue button just says there are none.
+On a CPU it takes about 50 seconds per word, so the full list takes about a day and a half. Progress goes to `data/raw/clue_report.json` after every word (git-ignored, since it names the words), so you can stop and rerun it; `--redo-failed` retries the words that failed. At the end, the passing clues go to `data/clues.json`, keyed by the schedule codes so the public file doesn't say which clues belong to which word. That step needs the schedule key, and refuses to write the file if the key doesn't decode `data/daily_schedule.txt`; `--export-only` redoes just that step. Puzzles without clues still work: the Clue button just says there are none.
 
 ## Project structure
 
@@ -294,6 +296,7 @@ word-hunt/
 │   ├── proper_nouns.txt     Extra proper nouns to exclude (hand-edited)
 │   └── clues.json           Written clues per answer (keyed by schedule code)
 ├── docs/                 Frontend, served by GitHub Pages
+├── .github/workflows/    CI: tests, ruff and node --check on every push
 ├── build.sh, start.sh    Render build and start commands
 └── requirements*.txt     Server, dev and script dependencies
 ```

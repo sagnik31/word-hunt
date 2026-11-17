@@ -3,14 +3,21 @@ from typing import List, Optional
 from pydantic import BaseModel, Field
 
 
+# Generous limits on what a browser can send, so a hand-made request (an
+# endless clock, a count too big for the results table) gets a 422, not a 500.
+MAX_SECONDS = 10 * 366 * 24 * 3600  # ten years
+MAX_COUNT = 100_000
+MAX_WORD_LENGTH = 100
+
+
 class PlayerStats(BaseModel):
     """The player's progress on a puzzle, kept in their browser."""
 
-    elapsed_seconds: float = Field(0.0, ge=0)  # since the clock started
-    guess_count: int = Field(0, ge=0)  # valid guesses before this request
-    clue_count: int = Field(0, ge=0)  # clues used
-    hint_count: int = Field(0, ge=0)  # hints used
-    best_rank: Optional[int] = Field(None, ge=1)
+    elapsed_seconds: float = Field(0.0, ge=0, le=MAX_SECONDS, allow_inf_nan=False)  # since the clock started
+    guess_count: int = Field(0, ge=0, le=MAX_COUNT)  # different words guessed before this request
+    clue_count: int = Field(0, ge=0, le=MAX_COUNT)  # clues used
+    hint_count: int = Field(0, ge=0, le=MAX_COUNT)  # hints used
+    best_rank: Optional[int] = Field(None, ge=1, le=MAX_COUNT * 10)
 
 
 # The browser's random device ID, so results count once per device. Anything
@@ -20,20 +27,20 @@ DeviceId = Optional[str]
 
 class GuessRequest(BaseModel):
     puzzle: int
-    word: str
+    word: str = Field(max_length=MAX_WORD_LENGTH)
     stats: PlayerStats = Field(default_factory=PlayerStats)
     device_id: DeviceId = Field(None, max_length=100)
 
 
 class HintRequest(BaseModel):
     puzzle: int
-    best_rank: Optional[int] = Field(None, ge=1)
-    hints_used: int = Field(0, ge=0)  # hints already shown on this puzzle
+    best_rank: Optional[int] = Field(None, ge=1, le=MAX_COUNT * 10)
+    hints_used: int = Field(0, ge=0, le=MAX_COUNT)  # hints already shown on this puzzle
 
 
 class ClueRequest(BaseModel):
     puzzle: int
-    clues_used: int = Field(0, ge=0)  # clues already shown on this puzzle
+    clues_used: int = Field(0, ge=0, le=MAX_COUNT)  # clues already shown on this puzzle
 
 
 class QuitRequest(BaseModel):

@@ -25,6 +25,9 @@ const HELP_STUCK_RUN = 5;
 const CLUE_COSTS = [5, 10, 15];
 const HINT_COSTS = [20, 25];
 const HELP_TYPES = new Set(["clue", "hint", "similar word"]);
+// Loading today's puzzle at start-up: tries, and the wait between them.
+const STARTUP_TRIES = 4;
+const STARTUP_RETRY_MS = 5000;
 
 const guessCount = (n) => `${n} more guess${n === 1 ? "" : "es"}`;
 const players = (n) => `${n} player${n === 1 ? "" : "s"}`;
@@ -32,9 +35,24 @@ const players = (n) => `${n} player${n === 1 ? "" : "s"}`;
 // "6–10", or "101+" for the last bar.
 const bucketLabel = (b) => (b.high === null ? `${b.low}+` : `${b.low}–${b.high}`);
 
+// The word a valid guess counted as ("cats" counts as "cat").
+const guessKey = (entry) => (entry.matched || entry.guess).toLowerCase();
+
+// The valid guesses, each word once: guessing a word again doesn't count
+// toward the guess penalty or the help gates.
+function distinctGuesses(entries) {
+    const seen = new Set();
+    return entries.filter((e) => {
+        if (e.type !== "guess" || !e.valid || seen.has(guessKey(e))) return false;
+        seen.add(guessKey(e));
+        return true;
+    });
+}
+
 // How many more guesses until the next help unlocks, and whether they must
 // be without a new best (false while the first-help guess count is short).
 function helpProgress(game) {
+    const counted = new Set(distinctGuesses(game.entries));
     let best = null;
     let guesses = 0;
     let run = 0; // guesses in a row, since the last help, with no new best
@@ -45,6 +63,7 @@ function helpProgress(game) {
             helped = true;
         }
         if (typeof entry.rank !== "number") continue; // invalid guesses don't count
+        if (entry.type === "guess" && !counted.has(entry)) continue; // a repeat
         const improved = best === null || entry.rank < best;
         if (improved) best = entry.rank;
         if (entry.type === "guess") {
@@ -151,6 +170,7 @@ export class GameUI {
         this.cluesSection = $("clues");
         this.clueList = $("clue-list");
         this.helpBusy = false; // a clue or hint request is on its way
+        this.playBusy = false; // a guess or quit request is on its way
         this.startSection = $("start");
         this.playButton = $("play-button");
         this.clockEl = $("clock");
@@ -185,15 +205,26 @@ export class GameUI {
 
     async init() {
         this.disableControls();
-        try {
-            const today = await this.api.getToday();
-            this.launchDate = today.launch_date;
-            this.today = today.puzzle;
-        } catch (err) {
-            console.error("Loading today's puzzle failed:", err);
-            this.setStatus("Cannot reach the server, or there's no puzzle today. Try again later.", "error");
+        // A sleeping server answers slowly, or with an error while it starts.
+        const slow = setTimeout(() => this.setStatus("Waking the server up. This can take up to a minute…"), 3000);
+        let today = null;
+        for (let attempt = 1; today === null; attempt += 1) {
+            try {
+                today = await this.api.getToday();
+            } catch (err) {
+                console.error(`Loading today's puzzle failed (try ${attempt}):`, err);
+                // 503 is the server saying there's no puzzle today: no point retrying.
+                if (err.status === 503 || attempt === STARTUP_TRIES) break;
+                await new Promise((resolve) => setTimeout(resolve, STARTUP_RETRY_MS));
+            }
+        }
+        clearTimeout(slow);
+        if (today === null) {
+            this.setStatus("Cannot reach the server, or there's no puzzle today. Reload the page to try again.", "error");
             return;
         }
+        this.launchDate = today.launch_date;
+        this.today = today.puzzle;
         this.setStatus("Server online.", "ok");
         this.route();
         setInterval(() => this.tick(), 1000);
@@ -330,7 +361,7 @@ export class GameUI {
         const game = this.progress.game(puzzle);
         if (game.status === "won") return `✅ Solved · ${game.score ?? 0} pts`;
         if (game.status === "quit") return "🏳️ Gave up";
-        const guesses = game.entries.filter((e) => e.type === "guess" && e.valid).length;
+        const guesses = distinctGuesses(game.entries).length;
         return `▶️ In progress · ${guesses} guess${guesses === 1 ? "" : "es"}`;
     }
 
@@ -364,11 +395,19 @@ export class GameUI {
         if (this.game.bestRank === null || rank < this.game.bestRank) this.game.bestRank = rank;
     }
 
+    // An earlier valid guess of this word (or that counted as it), if any.
+    earlierGuess(word) {
+        const typed = word.toLowerCase();
+        return this.game.entries.find(
+            (e) => e.type === "guess" && e.valid && (e.guess === typed || guessKey(e) === typed),
+        );
+    }
+
     stats() {
         const g = this.game;
         return {
             elapsed_seconds: g.startedAt === null ? 0 : (Date.now() - g.startedAt) / 1000,
-            guess_count: g.entries.filter((e) => e.type === "guess" && e.valid).length,
+            guess_count: distinctGuesses(g.entries).length,
             clue_count: g.clues.length,
             hint_count: g.hintCount,
             best_rank: g.bestRank,
@@ -483,9 +522,7 @@ export class GameUI {
         if (solvers === 0) return;
 
         const g = this.game;
-        const mine = g.status === "won"
-            ? g.entries.filter((e) => e.type === "guess" && e.valid).length
-            : null;
+        const mine = g.status === "won" ? distinctGuesses(g.entries).length : null;
         const most = Math.max(...buckets.map((b) => b.count));
         for (const b of buckets) {
             const you = mine !== null && mine >= b.low && (b.high === null || mine <= b.high);
@@ -587,17 +624,29 @@ export class GameUI {
 
     async handleGuessSubmit(event) {
         event.preventDefault();
-        if (this.gameOver) return;
+        if (this.gameOver || this.playBusy) return;
 
         const word = this.inputEl.value.trim();
         if (!word) return;
 
+        const earlier = this.earlierGuess(word);
+        if (earlier) {
+            // A repeat isn't sent: it would only show the same rank again.
+            this.inputEl.value = "";
+            this.showResultLine(`You already guessed ${describeGuess(earlier)}: rank #${earlier.rank}/${earlier.total}.`);
+            return;
+        }
+
         const puzzle = this.puzzle;
+        // Until the reply arrives, Quit waits: a winning reply after a quit
+        // would turn one game into two results.
+        this.playBusy = true;
         this.guessButton.disabled = true;
+        this.quitButton.disabled = true;
 
         try {
             const data = await this.api.makeGuess(puzzle, word, this.stats(), this.deviceId);
-            if (puzzle !== this.puzzle) return; // the player moved to another puzzle
+            if (puzzle !== this.puzzle || this.gameOver) return; // moved on, or finished meanwhile
 
             if (data.valid) this.recordRank(data.rank);
             if (data.valid && data.is_correct) {
@@ -613,10 +662,12 @@ export class GameUI {
             console.error("Guess request failed:", err);
             this.showResultLine("Error communicating with the server. Please try again.", "result-text-error");
         } finally {
+            this.playBusy = false;
             this.inputEl.value = "";
             // A winning guess has already disabled everything.
-            if (!this.gameOver) {
+            if (!this.gameOver && puzzle === this.puzzle) {
                 this.guessButton.disabled = false;
+                this.quitButton.disabled = false;
                 this.inputEl.focus();
             }
         }
@@ -637,7 +688,7 @@ export class GameUI {
         this.renderHelp();
         try {
             const s = await this.api.getHint(puzzle, this.game.bestRank, this.game.hintCount);
-            if (puzzle !== this.puzzle) return;
+            if (puzzle !== this.puzzle || this.gameOver) return;
 
             this.game.hintCount += 1;
             this.recordRank(s.rank);
@@ -668,7 +719,7 @@ export class GameUI {
         this.renderHelp();
         try {
             const data = await this.api.getClue(puzzle, this.game.clues.length);
-            if (puzzle !== this.puzzle) return;
+            if (puzzle !== this.puzzle || this.gameOver) return;
 
             this.game.clues.push(data.clue);
             this.game.clueTotal = data.total;
@@ -692,13 +743,14 @@ export class GameUI {
     }
 
     async handleQuitClick() {
-        if (this.gameOver) return;
+        if (this.gameOver || this.playBusy || this.helpBusy) return;
 
         const puzzle = this.puzzle;
+        this.playBusy = true;
         this.disableControls();
         try {
             const data = await this.api.quitGame(puzzle, this.stats(), this.deviceId);
-            if (puzzle !== this.puzzle) return;
+            if (puzzle !== this.puzzle || this.gameOver) return;
 
             this.game.status = "quit";
             this.game.finishedAt = Date.now();
@@ -707,8 +759,11 @@ export class GameUI {
             this.showFinalResult();
         } catch (err) {
             console.error("Quit request failed:", err);
+            if (puzzle !== this.puzzle) return;
             this.showResultLine("Error quitting the game. Please try again.", "result-text-error");
             this.enableControls();
+        } finally {
+            this.playBusy = false;
         }
     }
 

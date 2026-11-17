@@ -1,0 +1,29 @@
+# The same checks as .claude/skills/repo-gap-review/scripts/run_checks.sh:
+# the tests, ruff and a syntax check of the frontend, on every push to main.
+# No schedule key here, so the tests use their own schedule (as they do
+# locally). The clue-generator tests need nltk's WordNet and are skipped.
+name: checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: pip install -r requirements-dev.txt ruff
+      - run: python -m pytest -q
+      - run: ruff check backend
+      - run: for f in docs/js/*.js; do node --check "$f"; done

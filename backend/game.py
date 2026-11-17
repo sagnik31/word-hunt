@@ -1,3 +1,4 @@
+import threading
 from collections import OrderedDict
 from typing import Dict, Iterable, Optional, Set
 
@@ -74,21 +75,28 @@ class WordGameEngine:
         print(f"[WordGameEngine] {int(self.hint_ok.sum())} words can be hints")
 
         self._rankings: "OrderedDict[str, Ranking]" = OrderedDict()
+        # FastAPI runs these endpoints on a thread pool, so the cache is
+        # shared between threads.
+        self._rankings_lock = threading.Lock()
 
     @property
     def vocabulary(self) -> Iterable[str]:
         return self.vocab_set
 
     def ranking(self, answer: str) -> Ranking:
-        cached = self._rankings.get(answer)
-        if cached is not None:
-            self._rankings.move_to_end(answer)
-            return cached
+        with self._rankings_lock:
+            cached = self._rankings.get(answer)
+            if cached is not None:
+                self._rankings.move_to_end(answer)
+                return cached
+        # Built outside the lock (a few ms); two threads may build the same
+        # one, which is harmless.
         i = self.word_index[answer]
         ranking = Ranking(answer, self.words, self.vectors @ self.vectors[i], i)
-        self._rankings[answer] = ranking
-        if len(self._rankings) > self.CACHE_SIZE:
-            self._rankings.popitem(last=False)
+        with self._rankings_lock:
+            self._rankings[answer] = ranking
+            while len(self._rankings) > self.CACHE_SIZE:
+                self._rankings.popitem(last=False)
         return ranking
 
     def guess(self, answer: str, word: str) -> Dict[str, Optional[object]]:

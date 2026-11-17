@@ -1,19 +1,16 @@
+// The free backend sleeps when idle and can take up to a minute to wake,
+// so this is generous; it only stops a request that will never finish.
+const TIMEOUT_MS = 75_000;
+
 export class ApiClient {
     constructor(baseUrl) {
         this.baseUrl = baseUrl;
     }
 
-    async get(path) {
-        const res = await fetch(`${this.baseUrl}${path}`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json();
-    }
-
-    async post(path, body) {
+    async request(path, options = {}) {
         const res = await fetch(`${this.baseUrl}${path}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body),
+            ...options,
+            signal: AbortSignal.timeout(TIMEOUT_MS),
         });
         if (!res.ok) {
             const err = new Error(`HTTP ${res.status}`);
@@ -21,6 +18,18 @@ export class ApiClient {
             throw err;
         }
         return res.json();
+    }
+
+    get(path) {
+        return this.request(path);
+    }
+
+    post(path, body) {
+        return this.request(path, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        });
     }
 
     checkHealth() {

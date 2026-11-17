@@ -64,8 +64,8 @@ from nltk.corpus import wordnet as wn
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from backend.config import CLUES_PATH, schedule_key  # noqa: E402
-from backend.daily import word_code  # noqa: E402
+from backend.config import CLUES_PATH, SCHEDULE_PATH, schedule_key  # noqa: E402
+from backend.daily import decode, read_codes, word_code  # noqa: E402
 from backend.game import WordGameEngine  # noqa: E402
 from backend.scripts.build_word_lists import (  # noqa: E402
     PROPER_NOUNS_PATH,
@@ -538,10 +538,16 @@ def save(path, results):
     tmp.replace(path)
 
 
-def export(results, path):
+def export(results, path, schedule_path=SCHEDULE_PATH):
     key = schedule_key()
     if key is None:
         print("No schedule key (WORDHUNT_SCHEDULE_KEY or schedule.key): clues.json not written")
+        return
+    # With the wrong key every code is wrong, and the server would quietly
+    # find no clues for any puzzle. The right key decodes the schedule.
+    targets = [w.strip() for w in TARGETS_PATH.read_text(encoding="utf-8").splitlines() if w.strip()]
+    if not any(decode(read_codes(schedule_path), key, set(targets) | set(results))):
+        print(f"The schedule key doesn't decode {schedule_path.name} (wrong key?): clues.json not written")
         return
     passed = {word_code(w, key): e["clues"] for w, e in sorted(results.items()) if e["passed"]}
     path.write_text(json.dumps(passed, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
