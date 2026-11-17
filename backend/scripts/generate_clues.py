@@ -67,6 +67,11 @@ sys.path.insert(0, str(ROOT))
 from backend.config import CLUES_PATH, schedule_key  # noqa: E402
 from backend.daily import word_code  # noqa: E402
 from backend.game import WordGameEngine  # noqa: E402
+from backend.scripts.build_word_lists import (  # noqa: E402
+    PROPER_NOUNS_PATH,
+    is_proper_noun,
+    read_blocklist,
+)
 from backend.utils.word_forms import plural_forms  # noqa: E402
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
@@ -171,6 +176,10 @@ GUESSES_SCHEMA = {
 }
 
 CLUE_NAMES = ("vague", "medium", "strong")
+
+# What a failed or garbled Ollama reply raises: a network error or timeout,
+# JSON that doesn't parse (truncated output), or a reply missing its fields.
+OLLAMA_ERRORS = (requests.RequestException, ValueError, KeyError, TypeError)
 
 # Talk about the word's form rather than its meaning.
 FORM_TALK = re.compile(
@@ -310,6 +319,15 @@ class Checker:
     def __init__(self, engine):
         self.engine = engine
         self.base_of = engine.word_forms  # inflected form -> base word
+        self.listed_names = read_blocklist(PROPER_NOUNS_PATH) if PROPER_NOUNS_PATH.exists() else set()
+
+    def is_name(self, token):
+        """True for a proper noun ("Paris", "Italy's"), by the same test as the
+        word lists. Abbreviations such as "TV" are fine."""
+        if token.rstrip("s").isupper():
+            return False
+        low = re.sub(r"'s?$", "", token.lower())
+        return low in self.listed_names or is_proper_noun(low)
 
     def forms(self, word):
         forms = {word} | plural_forms(word)
@@ -335,8 +353,11 @@ class Checker:
             if len(tokens) > MAX_WORDS:
                 problems.append(f"The {name} clue is longer than 15 words.")
             # A capital after the first word suggests a name. "I" and
-            # abbreviations such as "TV" or "IDs" are fine.
+            # abbreviations such as "TV" or "IDs" are fine. The first word is
+            # always capitalised, so it's checked against the dictionary.
             names = [t for t in tokens[1:] if t[0].isupper() and not t.rstrip("s").isupper()]
+            if tokens and self.is_name(tokens[0]):
+                names.insert(0, tokens[0])
             if names:
                 problems.append(f'The {name} clue contains the name "{names[0]}".')
         return problems
@@ -455,11 +476,17 @@ def make_entry(checker, word, attempts, familiar):
         if written is None:
             try:
                 written = chat(WRITER_MODEL, messages, schema, 0.6, num_predict=300)
-            except (requests.RequestException, ValueError, KeyError) as error:
+            except OLLAMA_ERRORS as error:
                 tries.append({"error": str(error)})
                 continue
         vague = categories[level] if categories else None
-        clues, problems, ranks, guesses = check(checker, word, sense, written, vague)
+        try:
+            clues, problems, ranks, guesses = check(checker, word, sense, written, vague)
+        except OLLAMA_ERRORS as error:
+            # The checker or solver failed (timeout, bad JSON): the same
+            # clues are checked again on the next try, not the run stopped.
+            tries.append({"error": f"check failed: {error}"})
+            continue
         giveaway = vague is not None and bool(ranks) and ranks[0] == 1
         if giveaway:
             problems.insert(0, f"The vague clue gave the word away ({', '.join(guesses[0])}).")
@@ -490,7 +517,7 @@ def make_entry(checker, word, attempts, familiar):
                  + "\nFix these and keep what was fine. Reply with all the fields again."},
             ]
             written = None
-    best = dict(best or {"clues": [], "passed": False, "reason": "writer failed",
+    best = dict(best or {"clues": [], "passed": False, "reason": "no try finished (see tries)",
                          "solver_ranks": [], "solver_guesses": []})
     best["attempts"] = len(tries)
     best["tries"] = tries

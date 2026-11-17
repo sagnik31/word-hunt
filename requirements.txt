@@ -1,4 +1,7 @@
-fastapi
-uvicorn[standard]
-numpy
-psycopg[binary]  # Postgres (Neon) for results, used when DATABASE_URL is set
+# Pinned so a Render redeploy installs what was tested (Python 3.13).
+# To upgrade: bump a version here, reinstall, and rerun the tests.
+fastapi==0.122.0
+pydantic==2.12.5
+uvicorn[standard]==0.38.0
+numpy==2.3.5
+psycopg[binary]==3.3.9  # Postgres (Neon) for results, used when DATABASE_URL is set

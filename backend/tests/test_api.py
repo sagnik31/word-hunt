@@ -39,6 +39,19 @@ def test_health_check(client):
     assert client.get("/health").json() == {"status": "ok", "puzzle_ready": True, "results": True}
 
 
+def test_health_is_503_when_degraded(client):
+    # A failed startup must fail Render's health check, so a broken deploy
+    # never replaces a working one.
+    schedule = app.state.schedule
+    app.state.schedule = None
+    try:
+        response = client.get("/health")
+        assert response.status_code == 503
+        assert response.json()["status"] == "degraded"
+    finally:
+        app.state.schedule = schedule
+
+
 def test_today_names_the_current_puzzle(client):
     data = client.get("/today").json()
     assert data["puzzle"] == 2

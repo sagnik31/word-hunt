@@ -36,16 +36,23 @@ def get_hint(
     ranking: "Ranking",
     ranks: Tuple[int, int],
     allowed: np.ndarray,
-) -> Dict[str, object]:
+) -> Optional[Dict[str, object]]:
     """A word ranked within `ranks`, preferring `allowed` (ordinary) words.
 
     If no ordinary word falls in the range (rare), any word in it will do.
+    A plural of the answer is never revealed, since typing it wins; None when
+    nothing else is in the range.
     """
     low, high = ranks
     high = min(high, len(ranking.order) + 1)
-    positions = range(low - 2, high - 1)  # rank r is position r - 2
+    positions = [  # rank r is position r - 2
+        p for p in range(low - 2, high - 1)
+        if str(ranking.words[ranking.order[p]]) not in ranking.plurals
+    ]
+    if not positions:
+        return None
     ordinary = [p for p in positions if allowed[ranking.order[p]]]
-    word, sim, rank = ranking.neighbour(random.choice(ordinary or list(positions)))
+    word, sim, rank = ranking.neighbour(random.choice(ordinary or positions))
     return {
         "word": word,
         "rank": rank,

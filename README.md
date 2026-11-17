@@ -198,7 +198,7 @@ Use `python -m pytest` rather than plain `pytest`; the former puts the repositor
 
 | Method | Endpoint        | Description                                                         |
 | ------ | --------------- | ------------------------------------------------------------------- |
-| GET    | `/health`       | Reports whether the engine and the schedule loaded, and whether a results database is configured (`results`; not checked, so Neon can stay asleep). |
+| GET    | `/health`       | Reports whether the engine and the schedule loaded, and whether a results database is configured (`results`; not checked, so Neon can stay asleep). Returns 503 with `"status": "degraded"` when they didn't load, so Render's health check fails a broken deploy. |
 | GET    | `/today`        | Today's puzzle number, the UTC date, the launch date and the seconds until the next puzzle. Every puzzle from 1 to today's is playable. |
 | POST   | `/guess`        | Body: `{"puzzle": 7, "word": "...", "stats": {...}, "device_id": "..."}`. Returns rank, similarity, percentile and temperature label. `matched` holds the base word when a plural or verb form was scored as it (`cats` → `cat`). Includes the score on a correct guess, computed from `stats`; a correct guess on the puzzle's own day is stored as this device's result. |
 | GET    | `/puzzle/{n}`   | `{"puzzle", "clue_total"}`: how many written clues puzzle `n` has (0 when none). |
@@ -300,7 +300,7 @@ word-hunt/
 
 ## Deployment
 
-**Backend (Render).** Create a web service from the repository with build command `bash build.sh` and start command `bash start.sh`. These install `requirements.txt` and run Uvicorn on the port Render provides. Set the `WORDHUNT_SCHEDULE_KEY` environment variable to the schedule key; without it the server starts but `/health` reports `degraded`.
+**Backend (Render).** Create a web service from the repository with build command `bash build.sh` and start command `bash start.sh`. These install `requirements.txt` and run Uvicorn on the port Render provides. Set the `WORDHUNT_SCHEDULE_KEY` environment variable to the schedule key; without it the server starts but `/health` reports `degraded` with a 503. Set the service's health check path to `/health`: a deploy whose startup failed then fails its health check, and Render keeps the previous deploy running.
 
 For the results comparison, create a Neon project (the free plan is enough) and set `DATABASE_URL` on Render to its **pooled** connection string (`postgresql://...-pooler.../...?sslmode=require`). Never commit it. The `results` table is created on the first query. Without `DATABASE_URL`, everything else works and the comparison isn't shown.
 

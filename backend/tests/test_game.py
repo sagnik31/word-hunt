@@ -1,10 +1,11 @@
 from datetime import date
 
+import numpy as np
 import pytest
 
 from backend.daily import DailySchedule, decode, seconds_until_next_puzzle, word_code
-from backend.actions.hint import hint_ranks
-from backend.game import WordGameEngine
+from backend.actions.hint import get_hint, hint_ranks
+from backend.game import Ranking, WordGameEngine
 from backend.utils.scoring import describe_hotness
 
 ANSWER = "apple"
@@ -141,6 +142,21 @@ def test_hint_always_beats_the_best_rank(engine):
 def test_no_hint_when_only_the_answer_is_closer(engine):
     assert engine.hint(ANSWER, 2, 0) is None
     assert engine.hint(ANSWER, None, 2) is None
+
+
+def test_hint_never_reveals_a_plural_of_the_answer():
+    # "cats" (rank 2) wins when typed, so it's never revealed, not even as
+    # the only word in a shrunken range or by the any-word fallback.
+    words = np.array(["cat", "cats", "kitten", "dog", "tail", "mouse", "fur", "sofa"])
+    sims = np.array([1.0, 0.95, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4])
+    ranking = Ranking("cat", words, sims, 0)
+    assert int(ranking.rank_of[1]) == 2
+    nothing_ordinary = np.zeros(len(words), dtype=bool)
+    assert get_hint(ranking, (2, 2), nothing_ordinary) is None
+    for allowed in (nothing_ordinary, np.ones(len(words), dtype=bool)):
+        for _ in range(30):
+            info = get_hint(ranking, (2, 5), allowed)
+            assert info["word"] != "cats" and 3 <= info["rank"] <= 5
 
 
 def test_hint_words_leave_out_rare_and_inflected_words(engine):
