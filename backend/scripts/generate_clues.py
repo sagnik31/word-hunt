@@ -235,7 +235,7 @@ def sense_words(synset):
 def familiar_words():
     """Words nearly everyone knows, from the concreteness ratings."""
     if not RATINGS_PATH.exists():
-        sys.exit(f"Missing {RATINGS_PATH}: see 'Rebuilding the data' in the README.")
+        sys.exit(f"Missing {RATINGS_PATH}: see design/data-pipeline.md.")
     with RATINGS_PATH.open(encoding="utf-8") as f:
         return {row["Word"].lower() for row in csv.DictReader(f)
                 if float(row["Percent_known"]) >= FAMILIAR_KNOWN

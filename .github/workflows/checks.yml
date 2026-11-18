@@ -1,4 +1,4 @@
-# The same checks as .claude/skills/repo-gap-review/scripts/run_checks.sh:
+# The checks listed in CLAUDE.md:
 # the tests, ruff and a syntax check of the frontend, on every push to main.
 # No schedule key here, so the tests use their own schedule (as they do
 # locally). The clue-generator tests need nltk's WordNet and are skipped.
