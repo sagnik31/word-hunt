@@ -5,8 +5,9 @@ import numpy as np
 import pytest
 
 from backend.daily import DailySchedule, decode, seconds_until_next_puzzle, word_code
-from backend.actions.hint import get_hint, hint_ranks
+from backend.actions.hint import get_hint, hint_ranks, shares_stem
 from backend.game import Ranking, WordGameEngine
+from backend.utils.word_forms import KEEP_PLURALS, singular_forms
 from backend.utils.scoring import describe_hotness
 
 ANSWER = "apple"
@@ -92,6 +93,33 @@ def test_plural_of_the_answer_wins(engine):
     assert result["matched"] == ANSWER
 
 
+@pytest.mark.parametrize(
+    "answer, typed",
+    [
+        ("larva", "larvae"),  # irregular plurals, guess words of their own
+        ("stimulus", "stimuli"),
+        ("tongs", "tong"),  # the singular of a plural answer
+        ("color", "colour"),  # a British spelling
+    ],
+)
+def test_other_forms_of_the_answer_win(engine, answer, typed):
+    result = engine.guess(answer, typed)
+    assert result["is_correct"] is True
+    assert result["rank"] == 1
+
+
+def test_a_plural_that_means_something_else_isnt_won_by_its_singular(engine):
+    for plural in KEEP_PLURALS:  # spectacles aren't a glass
+        assert not set(singular_forms(plural)) & engine.answer_forms(plural)
+
+
+def test_british_spelling_counts_as_the_american_word(engine):
+    plain = engine.guess(ANSWER, "color")
+    british = engine.guess(ANSWER, "colour")
+    assert british["matched"] == "color"
+    assert british["rank"] == plain["rank"]
+
+
 def test_inflected_guess_counts_as_its_base_word(engine):
     plain = engine.guess(ANSWER, "cat")
     plural = engine.guess(ANSWER, "Cats")
@@ -172,6 +200,35 @@ def test_hint_never_reveals_a_plural_of_the_answer():
         for _ in range(30):
             info = get_hint(ranking, (2, 5), allowed)
             assert info["word"] != "cats" and 3 <= info["rank"] <= 5
+
+
+@pytest.mark.parametrize(
+    "answer, word, shared",
+    [
+        ("teaspoon", "teaspoonful", True),  # the answer's start
+        ("teaspoonful", "spoonful", True),  # one part of a compound
+        ("stimulus", "stimulate", True),  # a different ending
+        ("stimulus", "impulse", False),
+        ("teaspoon", "tea", False),  # too short to count
+        ("teaspoon", "teacher", False),
+    ],
+)
+def test_shares_stem(answer, word, shared):
+    assert shares_stem(answer, word) is shared
+
+
+def test_hint_avoids_words_on_the_answers_stem():
+    words = np.array(["stimulus", "stimulation", "impulse", "stimuli", "signal", "spark"])
+    sims = np.array([1.0, 0.95, 0.9, 0.85, 0.8, 0.7])
+    ranking = Ranking("stimulus", words, sims, 0)
+    everything = np.ones(len(words), dtype=bool)
+    for _ in range(30):
+        assert get_hint(ranking, (2, 5), everything)["word"] in {"impulse", "signal"}
+    # A rare word beats a giveaway...
+    only_stem = np.array([w == "stimulation" for w in words])
+    assert get_hint(ranking, (2, 3), only_stem)["word"] == "impulse"
+    # ...and the stem word is used only when nothing else is in range.
+    assert get_hint(ranking, (2, 2), everything)["word"] == "stimulation"
 
 
 def test_hint_words_leave_out_rare_and_inflected_words(engine):

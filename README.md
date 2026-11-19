@@ -9,7 +9,7 @@ The backend runs on a free tier and sleeps when idle, so the first visit after a
 ## How to play
 
 - Press **Play** to start the clock, then guess any common English word. Each guess shows its rank (the answer is #1) and a temperature, from Boiling (#2–10) down to Freezing (worse than #1,000).
-- Plurals and verb forms count as their base word, and repeats don't count as new guesses. Proper nouns (names, places, brands, days, months) are never accepted.
+- Plurals, verb forms, comparatives ("bigger") and British spellings ("colour") count as their base word, and repeats don't count as new guesses. Proper nouns (names, places, brands, days, months) are never accepted.
 - Stuck? Unlock up to three written **Clues**, from a broad category to close to a definition, then two **Hints**, which reveal a real word near the answer. The first help unlocks after 10 guesses, and each one after that needs 5 guesses in a row without a new best.
 - **Quit** at any time to reveal the answer for partial credit.
 - Solve each day's puzzle on its day to build a **streak**, and play earlier days from **Past puzzles**.

@@ -3,12 +3,16 @@ English plural and verb-form rules, shared by the word-list build script and
 the game engine.
 
 The word lists hold base forms ("cat", "bake"); these rules let the game accept
-"cats" or "baked" and treat them as the base word.
+"cats", "baked" or "bigger" and treat them as the base word.
 """
 
-from typing import Dict, Set
+from typing import Dict, List, Set
 
 VOWELS = set("aeiou")
+
+# Plurals that mean something other than "more than one" of the singular.
+# They stay answers of their own, and typing the singular doesn't win them.
+KEEP_PLURALS = {"clothes", "glasses", "pajamas", "checkers"}
 
 # Irregular forms the dataset doesn't already list (base -> forms).
 IRREGULAR_FORMS: Dict[str, Set[str]] = {
@@ -87,6 +91,30 @@ def verb_forms(word: str) -> Set[str]:
         forms |= {word + "ed", word + "ing"}
     if _ends_cvc(word):
         forms |= {word + word[-1] + "ed", word + word[-1] + "ing"}
+    return forms
+
+
+def adjective_forms(word: str) -> Set[str]:
+    """Comparative and superlative of an adjective: "bigger", "largest"."""
+    if word.endswith("e"):
+        return {word + "r", word + "st"}
+    if _ends_consonant_y(word):
+        return {word[:-1] + "ier", word[:-1] + "iest"}
+    forms = {word + "er", word + "est"}
+    if _ends_cvc(word):
+        forms |= {word + word[-1] + "er", word + word[-1] + "est"}
+    return forms
+
+
+def singular_forms(word: str) -> List[str]:
+    """Possible singulars of a regular English plural."""
+    forms = []
+    if word.endswith("ies"):
+        forms.append(word[:-3] + "y")
+    if word.endswith("es"):
+        forms.append(word[:-2])
+    if word.endswith("s") and not word.endswith("ss"):
+        forms.append(word[:-1])
     return forms
 
 

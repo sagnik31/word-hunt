@@ -47,3 +47,32 @@ def test_word_forms_point_at_guess_words():
     forms = _forms()
     assert not set(forms) & guesses
     assert set(forms.values()) <= guesses
+
+
+def test_word_forms_cover_irregular_comparative_and_british_forms():
+    forms = _forms()
+    expected = {
+        "became": "become",  # irregular verb
+        "genii": "genius",  # irregular plural
+        "tradesmen": "tradesman",  # "-men" plural
+        "largest": "large",  # superlative
+        "sadder": "sad",  # comparative, doubled consonant
+        "colour": "color",  # British spellings, and their forms
+        "favour": "favor",
+        "centre": "center",
+        "centres": "center",
+    }
+    assert {form: forms.get(form) for form in expected} == expected
+    # Narrow rules: other words, and made-up forms, aren't matched.
+    assert not {"lama", "loess", "outre", "humen", "iner", "aller"} & set(forms)
+    assert forms["tilling"] == "till"  # not "tile"
+
+
+def test_irregular_plurals_point_at_guess_words():
+    guesses = set(_words("guess_words.txt"))
+    pairs = [line.split("\t") for line in _words("irregular_plurals.txt")]
+    assert {base for _, base in pairs} <= guesses
+    assert ["larvae", "larva"] in pairs and ["stimuli", "stimulus"] in pairs
+    # WordNet pairs these too, but they're words of their own.
+    assert not {"cola", "dive", "crying"} & {form for form, _ in pairs}
+    assert not PROPER_NOUNS & {w for pair in pairs for w in pair}

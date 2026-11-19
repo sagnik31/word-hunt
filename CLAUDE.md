@@ -34,7 +34,7 @@ Each of these is relied on by players or guarded by a test. Don't change one wit
 - **A quit never beats a solve.** The best quit scores 20 and the worst solve 25. `backend/scoring.py` asserts it, and a property test checks it.
 - **All scoring numbers live in `backend/scoring.py`.** The help costs are copied in `docs/js/ui.js`, `docs/index.html` and `README.md`, and `test_frontend_copies.py` fails if they drift. Change them all together.
 - **Ranks:** the answer is rank 1 and its nearest neighbour rank 2. Temperature labels are fixed rank bands.
-- **Plurals and verb forms count as their base word,** and a plural of the answer wins. A hint never reveals a plural of the answer.
+- **Plurals, verb forms, comparatives and British spellings count as their base word,** and a plural of the answer wins (irregular ones too, and the singular of a plural answer). A hint never reveals a form of the answer, and avoids words on its stem.
 - **Repeat guesses don't count** towards the guess count or the help gates.
 - **Past puzzles never change.** Don't change `LAUNCH_DATE` or delete or reorder `data/daily_schedule.txt`. `build_schedule.py` only appends and is safe to rerun.
 - **The server keeps no per-player state.** Every request names its puzzle, and scoring uses the stats the browser sends. Unreleased puzzles return 404.

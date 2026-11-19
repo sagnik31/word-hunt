@@ -6,17 +6,33 @@ import numpy as np
 
 from backend.actions.guess import make_guess
 from backend.actions.hint import get_hint, hint_ranks
-from backend.config import EMBEDDINGS_PATH, HINT_WORDS_PATH, WORD_FORMS_PATH
+from backend.config import (
+    EMBEDDINGS_PATH,
+    HINT_WORDS_PATH,
+    IRREGULAR_PLURALS_PATH,
+    WORD_FORMS_PATH,
+)
 from backend.utils.loaders import load_word_forms
-from backend.utils.word_forms import plural_forms
+from backend.utils.word_forms import KEEP_PLURALS, plural_forms, singular_forms
 
 
 class Ranking:
     """Every guess word ranked by similarity to one answer."""
 
-    def __init__(self, answer: str, words: np.ndarray, sims: np.ndarray, answer_index: int):
+    def __init__(
+        self,
+        answer: str,
+        words: np.ndarray,
+        sims: np.ndarray,
+        answer_index: int,
+        answer_forms: Optional[Set[str]] = None,
+    ):
         self.answer = answer
-        self.plurals: Set[str] = plural_forms(answer) - {answer}
+        # Other words that win when typed (its plurals; the engine also adds
+        # irregular ones and singulars); a hint never reveals them.
+        if answer_forms is None:
+            answer_forms = plural_forms(answer)
+        self.answer_forms: Set[str] = set(answer_forms) - {answer}
         # Word indices, closest first, without the answer (it's rank 1, and
         # leaving it out means a hint can never reveal it).
         order = np.argsort(-sims, kind="stable")
@@ -51,6 +67,7 @@ class WordGameEngine:
         embeddings_path: str = str(EMBEDDINGS_PATH),
         word_forms_path: str = str(WORD_FORMS_PATH),
         hint_words_path: str = str(HINT_WORDS_PATH),
+        irregular_plurals_path: str = str(IRREGULAR_PLURALS_PATH),
     ):
         data = np.load(embeddings_path)
         self.words = data["words"]  # numpy array, so a ranking can index it
@@ -63,6 +80,18 @@ class WordGameEngine:
         # Plurals and verb forms accepted as their base word ("cats" -> "cat").
         self.word_forms: Dict[str, str] = load_word_forms(word_forms_path)
         print(f"[WordGameEngine] Loaded {len(self.word_forms)} extra word forms")
+
+        # Irregular plurals ("octopi"), base -> forms, so they win too.
+        self.irregular_plurals: Dict[str, Set[str]] = {}
+        # Read line by line: one form can have two bases ("axes").
+        try:
+            with open(irregular_plurals_path, encoding="utf-8") as fh:
+                for line in fh:
+                    parts = line.rstrip("\r\n").split("\t")
+                    if len(parts) == 2:
+                        self.irregular_plurals.setdefault(parts[1], set()).add(parts[0])
+        except FileNotFoundError:
+            print(f"[WordGameEngine] {irregular_plurals_path} missing; only regular plurals win")
 
         # Which words a Hint may reveal; every word if the list is missing.
         try:
@@ -83,6 +112,19 @@ class WordGameEngine:
     def vocabulary(self) -> Iterable[str]:
         return self.vocab_set
 
+    def answer_forms(self, answer: str) -> Set[str]:
+        """Other words that count as the answer when typed: its plurals,
+        regular or irregular ("octopi"), and the singular of a plural answer
+        ("goggle" for "goggles") unless the plural means something else
+        ("glasses")."""
+        forms = plural_forms(answer) | self.irregular_plurals.get(answer, set())
+        if answer not in KEEP_PLURALS:
+            forms |= {
+                s for s in singular_forms(answer)
+                if s in self.vocab_set and answer in plural_forms(s)
+            }
+        return forms - {answer}
+
     def ranking(self, answer: str) -> Ranking:
         with self._rankings_lock:
             cached = self._rankings.get(answer)
@@ -92,7 +134,9 @@ class WordGameEngine:
         # Built outside the lock (a few ms); two threads may build the same
         # one, which is harmless.
         i = self.word_index[answer]
-        ranking = Ranking(answer, self.words, self.vectors @ self.vectors[i], i)
+        ranking = Ranking(
+            answer, self.words, self.vectors @ self.vectors[i], i, self.answer_forms(answer)
+        )
         with self._rankings_lock:
             self._rankings[answer] = ranking
             while len(self._rankings) > self.CACHE_SIZE:

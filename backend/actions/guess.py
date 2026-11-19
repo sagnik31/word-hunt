@@ -14,9 +14,11 @@ def make_guess(
 ) -> Dict[str, Optional[object]]:
     typed = (guess_word or "").strip().lower()
 
-    # Plurals and verb forms count as their base word: "cats" -> "cat".
-    # A plural of the answer wins even when it's a guess word itself ("dogs").
-    if typed in ranking.plurals:
+    # Plurals, verb forms and British spellings count as their base word:
+    # "cats" -> "cat", "colour" -> "color". A plural of the answer (or the
+    # singular of a plural answer) wins even when it's a guess word itself
+    # ("dogs", "octopi").
+    if typed in ranking.answer_forms:
         guess_norm = ranking.answer
     elif typed not in word_index:
         guess_norm = word_forms.get(typed, typed)

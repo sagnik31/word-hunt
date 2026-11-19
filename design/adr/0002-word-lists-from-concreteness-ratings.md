@@ -21,7 +21,7 @@ Earlier versions used ad-hoc noun lists from different sources, which disagreed 
   - **Guesses:** every single word in the dataset that has a GloVe vector and isn't a proper noun (~31,000).
   - **Answers:** nouns known by ≥ 95% of raters, concreteness ≥ 4.0 and subtitle frequency ≥ 50, minus plurals and a hand-edited blocklist (~2,500).
   - **Hints:** known by ≥ 95% of raters, subtitle frequency ≥ 10 and not an inflected form (~16,700).
-  - **Word forms:** ~22,000 plurals and verb forms that aren't guess words themselves, each mapped to a base word, so a plural of the answer wins.
+  - **Word forms:** ~24,000 forms that aren't guess words themselves, each mapped to a base word, so a plural of the answer wins: plurals and verb forms, irregular forms from WordNet, comparatives, and British spellings (added 2026-11-20). A separate list of irregular plurals lets those win too when they're guess words of their own.
 - **Proper nouns:** a word is excluded when WordNet only knows it with a capital letter, or when it's listed in `data/proper_nouns.txt`. A short allowlist in the script keeps ordinary words WordNet happens to capitalise. A test checks the generated lists.
 - **Generated offline, committed:** the lists are plain text in `data/`, so the server and the tests don't need the dataset, WordNet or GloVe.
 

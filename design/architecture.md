@@ -8,7 +8,8 @@ The project has three parts: an offline data pipeline, a small stateless API, an
 
 ```
 Offline:  concreteness ratings ──► build_word_lists.py ──► guess_words.txt, target_words.txt,
-                                                            hint_words.txt, word_forms.txt
+                                                            hint_words.txt, word_forms.txt,
+                                                            irregular_plurals.txt
           guess_words.txt + GloVe 300d ──► extract_embeddings.py ──► embeddings.npz
           target_words.txt + key ──► build_schedule.py ──► daily_schedule.txt (hashed)
           answers + WordNet + Ollama ──► generate_clues.py ──► clues.json (keyed by hash)
@@ -26,8 +27,8 @@ Everything the server reads at runtime is committed in `data/`. The pipeline's i
 - **Ranking** (`backend/game.py`): for an answer, one matrix product of the unit-length vectors against the answer's vector gives every guess word's similarity, and a sort gives its rank. The answer is rank 1. Rankings are cached for the last few answers, behind a lock.
 - **Daily schedule** (`backend/daily.py`): puzzle #N is line N of `data/daily_schedule.txt`, and puzzle #1 is `LAUNCH_DATE` in `backend/config.py`. Each line is an HMAC of the word. Puzzles after today's are refused with 404.
 - **Requests carry their own context.** Every request names a puzzle number, and scoring requests carry the player's stats. The server keeps no player state.
-- **Guesses** (`backend/actions/`, `backend/utils/word_forms.py`): a guess is lowercased, a plural or verb form is mapped to its base word, and anything not in the guess list (including every proper noun) is rejected.
-- **Help** (`backend/routes/help.py`, `backend/actions/hint.py`): `/clue` returns the next written clue, and `/hint` returns an everyday word ranked #6–10 (first hint) or #2–5 (second), always better than the player's best.
+- **Guesses** (`backend/actions/`, `backend/utils/word_forms.py`): a guess is lowercased, a plural, verb form, comparative or British spelling is mapped to its base word, and anything not in the guess list (including every proper noun) is rejected.
+- **Help** (`backend/routes/help.py`, `backend/actions/hint.py`): `/clue` returns the next written clue, and `/hint` returns an everyday word ranked #6–10 (first hint) or #2–5 (second), always better than the player's best. It never reveals a form of the answer and avoids words on its stem ("stimulate" for "stimulus") unless nothing else is in range.
 - **Scoring** (`backend/scoring.py`): every rule and number is in one constants block at the top of the module.
 - **Results** (`backend/results.py`): an optional store, on Postgres or SQLite, with one row per device per puzzle. It connects on first use. See [ADR 0007](adr/0007-optional-lazily-connected-results-store.md).
 - **Routes:** one router per endpoint group in `backend/routes/`, with the request and response models in `backend/schemas.py`. See the [API reference](api.md).
@@ -64,7 +65,8 @@ word-hunt/
 │   ├── guess_words.txt      Words you can guess
 │   ├── target_words.txt     Possible answers
 │   ├── hint_words.txt       Everyday words a Hint may reveal
-│   ├── word_forms.txt       Plurals and verb forms, mapped to base words
+│   ├── word_forms.txt       Plurals, verb forms, comparatives and British spellings, mapped to base words
+│   ├── irregular_plurals.txt Irregular plurals ("larvae"), so they win when the singular is the answer
 │   ├── embeddings.npz       GloVe vectors for every guess word
 │   ├── daily_schedule.txt   Which answer on which day (hashed)
 │   ├── clues.json           Written clues per answer (keyed by schedule code, once generated)

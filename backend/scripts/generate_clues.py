@@ -72,7 +72,6 @@ from backend.scripts.build_word_lists import (  # noqa: E402
     is_proper_noun,
     read_blocklist,
 )
-from backend.utils.word_forms import plural_forms  # noqa: E402
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
 WRITER_MODEL = "qwen3.5:4b"
@@ -330,7 +329,7 @@ class Checker:
         return low in self.listed_names or is_proper_noun(low)
 
     def forms(self, word):
-        forms = {word} | plural_forms(word)
+        forms = {word} | self.engine.answer_forms(word)
         forms |= {f for f, base in self.base_of.items() if base == word}
         return forms
 
