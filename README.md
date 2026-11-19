@@ -73,6 +73,7 @@ To play locally, serve a copy of `docs/` pointed at your backend; see [Developme
 6. [Clues from small local models, grounded in WordNet](design/adr/0006-clues-from-local-models-grounded-in-wordnet.md)
 7. [An optional, lazily connected results database](design/adr/0007-optional-lazily-connected-results-store.md)
 8. [A no-build static frontend and free-tier hosting](design/adr/0008-static-frontend-and-free-tier-hosting.md)
+9. [Hand-picked answers instead of filters](design/adr/0009-hand-picked-answer-list.md)
 
 ## Limitations
 

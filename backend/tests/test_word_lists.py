@@ -76,3 +76,11 @@ def test_irregular_plurals_point_at_guess_words():
     # WordNet pairs these too, but they're words of their own.
     assert not {"cola", "dive", "crying"} & {form for form, _ in pairs}
     assert not PROPER_NOUNS & {w for pair in pairs for w in pair}
+
+
+def test_answers_are_the_hand_picked_list():
+    picked = {
+        line.split("#", 1)[0].strip()
+        for line in _words("answer_list.txt")
+    } - {""}
+    assert set(_words("target_words.txt")) == picked

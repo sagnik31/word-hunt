@@ -8,7 +8,7 @@ The project has three parts: an offline data pipeline, a small stateless API, an
 
 ```
 Offline:  concreteness ratings ──► build_word_lists.py ──► guess_words.txt, target_words.txt,
-                                                            hint_words.txt, word_forms.txt,
+          + answer_list.txt                                 hint_words.txt, word_forms.txt,
                                                             irregular_plurals.txt
           guess_words.txt + GloVe 300d ──► extract_embeddings.py ──► embeddings.npz
           target_words.txt + key ──► build_schedule.py ──► daily_schedule.txt (hashed)
@@ -63,7 +63,8 @@ word-hunt/
 │   └── tests/            API, engine, scoring, results and word-list tests
 ├── data/
 │   ├── guess_words.txt      Words you can guess
-│   ├── target_words.txt     Possible answers
+│   ├── answer_list.txt      The answers (hand-picked)
+│   ├── target_words.txt     The answers, as checked by the build
 │   ├── hint_words.txt       Everyday words a Hint may reveal
 │   ├── word_forms.txt       Plurals, verb forms, comparatives and British spellings, mapped to base words
 │   ├── irregular_plurals.txt Irregular plurals ("larvae"), so they win when the singular is the answer

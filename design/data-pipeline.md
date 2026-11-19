@@ -30,7 +30,8 @@ python backend/scripts/extract_embeddings.py
 | File | What's in it | Rule |
 | ---- | ------------ | ---- |
 | `data/guess_words.txt` | Words you can guess (~31,000) | Every single word in the dataset with a GloVe vector that isn't a proper noun |
-| `data/target_words.txt` | Possible answers (~2,500) | Nouns known by ≥ 95% of raters, concreteness ≥ 4.0, subtitle frequency ≥ 50, no plurals, not in `data/target_blocklist.txt` |
+| `data/target_words.txt` | The answers (~200) | The hand-picked words in `data/answer_list.txt`, checked: each must be a guess word, not in `data/target_blocklist.txt` and not a plural of another answer ([ADR 0009](adr/0009-hand-picked-answer-list.md)) |
+| `data/raw/answer_candidates.txt` | More possible answers (git-ignored) | Nouns known by ≥ 95% of raters, concreteness ≥ 4.0, subtitle frequency ≥ 50, no plurals, not blocked and not answers yet |
 | `data/hint_words.txt` | Words a Hint may reveal (~16,700) | Known by ≥ 95%, subtitle frequency ≥ 10, not an inflected form of another word |
 | `data/word_forms.txt` | Plurals, verb forms, comparatives and British spellings (~24,000) | Forms that aren't guess words themselves, each mapped to a base word: the rules in `backend/utils/word_forms.py`, WordNet's lists of irregular forms ("larvae", "blew"), and British spellings from the narrow rewrite rules and table in `build_word_lists.py` ("colour", "centres") |
 | `data/irregular_plurals.txt` | Irregular plurals (~225) | From WordNet ("larvae" → "larva"), kept even when the plural is a guess word itself, so it wins when the singular is the answer |
@@ -41,7 +42,8 @@ The thresholds are constants at the top of `build_word_lists.py`. A word counts 
 
 **Common edits:**
 
-- **Change which words can be the answer:** edit `data/target_blocklist.txt` (one word per line), rerun `build_word_lists.py`, then `build_schedule.py`.
+- **Change the answers:** edit `data/answer_list.txt` (one word per line), rerun `build_word_lists.py`, then `build_schedule.py`. The build stops and names any word that fails a check.
+- **Keep a word from ever being an answer:** add it to `data/target_blocklist.txt`.
 - **Ban a proper noun that slipped through:** add it to `data/proper_nouns.txt` and rerun `build_word_lists.py`.
 
 ## Daily schedule

@@ -126,16 +126,17 @@ Rules for the clues:
 - Never mention letters, spelling, word length, sounds or rhymes.
 - No names of people, places, countries, brands, books or films.
 
-Example for the secret word "kettle" (meaning: a metal pot with a spout and handle, for boiling water):
+Example for the secret word "teapot" (meaning: a pot with a handle, a spout and a lid, for brewing tea):
 {example}"""
 
 VAGUE_FIELD = ('- vague: only the broad category, such as "something found in a kitchen" or '
                '"a kind of worker". Dozens of words should fit it. Use no detail from the other '
                'two clues.\n')
-KETTLE = {"meaning": "a metal pot with a spout and a handle for boiling water",
-          "strong": "You fill it with water and heat it to make tea.",
-          "medium": "It is a metal pot with a spout for pouring.",
-          "vague": "You will find this in most kitchens."}
+# The worked example in the writer's prompt; never an answer word.
+EXAMPLE = {"meaning": "a pot with a handle, a spout and a lid, for brewing tea",
+           "strong": "You put tea leaves and hot water in it to brew tea.",
+           "medium": "It is a pot with a spout for pouring and a lid.",
+           "vague": "You will find this in most kitchens."}
 
 FACT_PROMPT = """Word: "{word}" (meaning: {meaning})
 Clue: "{clue}"
@@ -451,7 +452,7 @@ def writer_prompt(word, sense, categories):
     prompt = PROMPT.format(
         word=word, sense=sense, category=category, count=len(fields) - 1,
         vague="" if categories else VAGUE_FIELD,
-        example=json.dumps({f: KETTLE[f] for f in fields}, ensure_ascii=False))
+        example=json.dumps({f: EXAMPLE[f] for f in fields}, ensure_ascii=False))
     schema = {"type": "object", "properties": {f: {"type": "string"} for f in fields},
               "required": fields}
     return prompt, schema

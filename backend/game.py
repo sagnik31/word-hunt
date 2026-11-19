@@ -81,7 +81,7 @@ class WordGameEngine:
         self.word_forms: Dict[str, str] = load_word_forms(word_forms_path)
         print(f"[WordGameEngine] Loaded {len(self.word_forms)} extra word forms")
 
-        # Irregular plurals ("octopi"), base -> forms, so they win too.
+        # Irregular plurals ("larvae"), base -> forms, so they win too.
         self.irregular_plurals: Dict[str, Set[str]] = {}
         # Read line by line: one form can have two bases ("axes").
         try:
@@ -114,8 +114,8 @@ class WordGameEngine:
 
     def answer_forms(self, answer: str) -> Set[str]:
         """Other words that count as the answer when typed: its plurals,
-        regular or irregular ("octopi"), and the singular of a plural answer
-        ("goggle" for "goggles") unless the plural means something else
+        regular or irregular ("larvae"), and the singular of a plural answer
+        ("tong" for "tongs") unless the plural means something else
         ("glasses")."""
         forms = plural_forms(answer) | self.irregular_plurals.get(answer, set())
         if answer not in KEEP_PLURALS:

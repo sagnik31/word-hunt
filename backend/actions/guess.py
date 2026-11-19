@@ -17,7 +17,7 @@ def make_guess(
     # Plurals, verb forms and British spellings count as their base word:
     # "cats" -> "cat", "colour" -> "color". A plural of the answer (or the
     # singular of a plural answer) wins even when it's a guess word itself
-    # ("dogs", "octopi").
+    # ("dogs", "larvae").
     if typed in ranking.answer_forms:
         guess_norm = ranking.answer
     elif typed not in word_index:

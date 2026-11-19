@@ -8,6 +8,7 @@ Run from the repository root:
 Inputs:
   - data/raw/concreteness_ratings.csv  (Hugging Face mirror of the dataset)
   - data/glove.6B.300d.txt             (only its vocabulary is read)
+  - data/answer_list.txt               (the answers, hand-picked)
   - data/target_blocklist.txt          (words never used as answers)
   - data/proper_nouns.txt              (proper nouns WordNet doesn't know)
   - NLTK's WordNet data: python -m nltk.downloader wordnet
@@ -18,15 +19,18 @@ when it's listed in data/proper_nouns.txt.
 
 Outputs, sorted:
   - data/guess_words.txt   every single word that has a GloVe vector
-  - data/target_words.txt  everyday, picturable nouns used as answers
+  - data/target_words.txt  the answers: data/answer_list.txt, checked
   - data/word_forms.txt    "form<TAB>base" lines: plurals, verb forms,
                            comparatives and British spellings that aren't
                            guess words themselves ("cats" -> "cat",
                            "colour" -> "color")
   - data/hint_words.txt    guess words ordinary enough for a Hint to reveal
-  - data/irregular_plurals.txt  "form<TAB>base" irregular plurals ("octopi"),
+  - data/irregular_plurals.txt  "form<TAB>base" irregular plurals ("larvae"),
                            so a plural of the answer wins even when it's a
                            guess word of its own
+  - data/raw/answer_candidates.txt  (git-ignored, it names answers) words
+                           that pass the answer filters but aren't answers
+                           yet, to pick more from
 """
 
 import csv
@@ -48,6 +52,7 @@ from nltk.corpus import wordnet  # noqa: E402
 DATA = ROOT / "data"
 RATINGS_PATH = DATA / "raw" / "concreteness_ratings.csv"
 GLOVE_PATH = DATA / "glove.6B.300d.txt"
+ANSWER_LIST_PATH = DATA / "answer_list.txt"
 BLOCKLIST_PATH = DATA / "target_blocklist.txt"
 PROPER_NOUNS_PATH = DATA / "proper_nouns.txt"
 GUESS_OUT = DATA / "guess_words.txt"
@@ -55,8 +60,10 @@ TARGET_OUT = DATA / "target_words.txt"
 FORMS_OUT = DATA / "word_forms.txt"
 HINT_OUT = DATA / "hint_words.txt"
 PLURALS_OUT = DATA / "irregular_plurals.txt"
+CANDIDATES_OUT = DATA / "raw" / "answer_candidates.txt"
 
-# Target filters (agreed with the owner: "Option A", about 2,900 candidates).
+# Answers are hand-picked in data/answer_list.txt. These filters only find
+# candidates to pick from: everyday, picturable nouns (about 2,900).
 MIN_PERCENT_KNOWN = 0.95  # share of raters who knew the word
 MIN_CONCRETENESS = 4.0  # 1 = abstract, 5 = concrete
 MIN_SUBTLEX = 50  # subtitle frequency count, drops rare words
@@ -224,7 +231,7 @@ def build_word_forms(guesses: set, glove: dict, comparable: set) -> dict:
 
 
 def build_irregular_plurals(guesses: set, glove: dict) -> dict:
-    """Irregular plurals WordNet lists ("octopi", "larvae"), base -> forms.
+    """Irregular plurals WordNet lists ("larvae", "stimuli"), base -> forms.
     Unlike word_forms.txt this keeps plurals that are guess words too, so
     the game can let them win when their singular is the answer."""
     plurals = {}
@@ -267,12 +274,13 @@ def is_inflected(word: str) -> bool:
 
 
 def build():
-    for path in (RATINGS_PATH, GLOVE_PATH, BLOCKLIST_PATH, PROPER_NOUNS_PATH):
+    for path in (RATINGS_PATH, GLOVE_PATH, ANSWER_LIST_PATH, BLOCKLIST_PATH, PROPER_NOUNS_PATH):
         if not path.exists():
             sys.exit(f"Missing input: {path}")
 
     print(f"Reading GloVe vocabulary from {GLOVE_PATH.name} ...")
     glove = read_glove_vocab(GLOVE_PATH)
+    answers = read_blocklist(ANSWER_LIST_PATH)
     blocklist = read_blocklist(BLOCKLIST_PATH)
     listed_proper_nouns = read_blocklist(PROPER_NOUNS_PATH)
 
@@ -318,19 +326,29 @@ def build():
         ):
             nouns.add(word)
 
-    # Drop "dogs" when "dog" is also a target, so answers are base forms.
+    # Every answer must be a guess word (so not a proper noun), not blocked,
+    # and a base form: not "dogs" next to "dog".
+    problems = {
+        "aren't guess words (no vector, a proper noun, or a typo)": answers - guesses,
+        "are in target_blocklist.txt": answers & blocklist,
+        "are plurals of another answer": {
+            w for w in answers
+            if w not in KEEP_PLURALS and any(s in answers for s in singular_forms(w))
+        },
+    }
+    for problem, words in problems.items():
+        if words:
+            sys.exit(f"{ANSWER_LIST_PATH.name}: {len(words)} words {problem}: "
+                     f"{', '.join(sorted(words))}")
+    targets = answers
+
+    # Candidates to pick more answers from, with the same plural rule.
     plurals = {
         w
         for w in nouns
         if w not in KEEP_PLURALS and any(s in nouns for s in singular_forms(w))
     }
-    blocked = nouns & blocklist
-    targets = nouns - plurals - blocked
-
-    unused = blocklist - nouns
-    if unused:
-        print(f"Note: {len(unused)} blocklist words were not candidates anyway: "
-              f"{', '.join(sorted(unused))}")
+    candidates = nouns - plurals - blocklist - answers
 
     word_forms = build_word_forms(guesses, glove, comparable)
     irregular_plurals = build_irregular_plurals(guesses, glove)
@@ -342,6 +360,7 @@ def build():
         "".join(f"{form}\t{base}\n" for form, base in sorted(word_forms.items())),
         encoding="utf-8",
     )
+    CANDIDATES_OUT.write_text("\n".join(sorted(candidates)) + "\n", encoding="utf-8")
     PLURALS_OUT.write_text(
         "".join(
             f"{form}\t{base}\n"
@@ -355,10 +374,8 @@ def build():
     print(f"Proper nouns left out:     {len(proper_nouns)}")
     print(f"Guess words:               {len(guesses)}  -> {GUESS_OUT.name}")
     print(f"Hint words:                {len(hint_words)}  -> {HINT_OUT.name}")
-    print(f"Target candidates:         {len(nouns)}")
-    print(f"  dropped as plurals:      {len(plurals)}")
-    print(f"  dropped by blocklist:    {len(blocked)}")
     print(f"Target words:              {len(targets)}  -> {TARGET_OUT.name}")
+    print(f"More answer candidates:    {len(candidates)}  -> raw/{CANDIDATES_OUT.name}")
     print(f"Extra word forms accepted: {len(word_forms)}  -> {FORMS_OUT.name}")
     print(f"Irregular plurals:         {sum(map(len, irregular_plurals.values()))}  -> {PLURALS_OUT.name}")
 

@@ -1,6 +1,6 @@
 # ADR 0002: Build every word list from one concreteness-ratings dataset, with no proper nouns
 
-- **Status:** Accepted
+- **Status:** Accepted; the answers part superseded by [ADR 0009](0009-hand-picked-answer-list.md) (2026-11-20)
 - **Date:** 2026-11-08
 
 ## Context

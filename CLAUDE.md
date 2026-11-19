@@ -58,7 +58,7 @@ Each of these is relied on by players or guarded by a test. Don't change one wit
 
 - **Python:** small modules, with tunable numbers as named constants at the top of the module (thresholds, costs, ranks). FastAPI routes go in `backend/routes/`, one router per endpoint group, and request and response models in `backend/schemas.py`. Validate request ranges in the schemas; a bad `device_id` is ignored, not refused.
 - **Frontend:** no frameworks, bundlers or npm dependencies. Every module must load directly in the browser. Changes to the saved-progress format in `storage.js` need a migration for old saves.
-- **Data:** never edit generated files in `data/` by hand. Edit the inputs (`target_blocklist.txt`, `proper_nouns.txt`, the script constants) and rerun the scripts. Compare word lists in Python, not with shell `sort`/`comm`, which disagree across platforms.
+- **Data:** never edit generated files in `data/` by hand. Edit the inputs (`answer_list.txt`, `target_blocklist.txt`, `proper_nouns.txt`, the script constants) and rerun the scripts. Compare word lists in Python, not with shell `sort`/`comm`, which disagree across platforms.
 - **Tests:** add or update tests with every behaviour change. Prefer deleting dead code over keeping it around.
 - **Docs:** update `README.md` (player-facing behaviour) or `design/` (internals) in the same change. A new major design decision gets a new numbered ADR in `design/adr/`, and a reversed one gets its status changed, not a rewrite.
 - **Downloads:** large inputs (GloVe, the ratings CSV) go in `data/` or `data/raw/` and stay uncommitted.
