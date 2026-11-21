@@ -90,8 +90,11 @@ When a set fails, the writer is told exactly what went wrong and asked to fix it
 
 **Running it:**
 
-- In a 30-word pilot, 26 words passed, all about the right meaning. About a quarter of the passing sets still had a doubtful detail, mostly in the medium clue. **Skim the report before using the clues.**
-- On a CPU it takes about 50 seconds per word.
-- Progress goes to `data/raw/clue_report.json` after every word (git-ignored, since it names the words), so you can stop and rerun it. `--redo-failed` retries the words that failed.
-- At the end, the passing clues go to `data/clues.json`, keyed by the schedule codes. That step needs the schedule key, and refuses to write the file if the key doesn't decode `data/daily_schedule.txt`. `--export-only` redoes just that step.
+- On a 50-word test set of non-answers (2026-11-21), 45 sets passed. Of 20 hand-labelled passing medium clues, 15 were correct, 4 doubtful and 1 wrong; the fact checker catches only about a quarter of wrong clues. **Skim the report before using the clues.** Sets marked `review_first` (the medium clue shares no word with the dictionary meaning) are the likeliest to hold an invented detail, so read those first.
+- On a CPU it takes about 50 seconds per word, about 3 hours for 200.
+- Each request asks Ollama for an 8,192-token context (`NUM_CTX`). Ollama's default is the model's maximum, which made the writer hold about 12 GB of RAM. A prompt that would nearly fill the context is an error for that word, never a silent cut.
+- Progress goes to `data/raw/clue_report.json` after every word (git-ignored, since it names the words), written to a temporary file and then moved into place, so Ctrl+C or a kill never damages it. Rerun the same command to carry on: only unfinished words are done. A one-line summary per word goes to `data/raw/clue_report.log`; the screen shows only counts, never words.
+- A word whose models fail (Ollama down, timeouts) is logged and tried again on the next run; after 3 in a row the run stops.
+- `--redo-failed` retries the words that failed. `--words <file> --report <file>` runs on another word list, such as a test set, without touching the answers. `--summary` prints the pass rate, failure reasons and time, naming no words.
+- **A run never writes `data/clues.json`.** After the skim, `--export-only` writes the passing clues for the answer words (words from other lists are left out), keyed by the schedule codes. That step needs the schedule key, and refuses to write the file if the key doesn't decode `data/daily_schedule.txt`.
 - Puzzles without clues still work: the help ladder goes straight to hints.

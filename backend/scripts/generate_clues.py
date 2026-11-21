@@ -15,6 +15,9 @@ model writes the vague clue only for the few words with no usable parent.
 The model writes the meaning and the strong clue first, then the medium clue,
 which should restate a detail the dictionary meaning gives, so it has no
 room to invent facts.
+A passing set whose medium clue shares no word with the meaning is marked
+review_first in the report, so the human skim starts with the likeliest
+invented details.
 
 Each set is checked three times:
 
@@ -39,22 +42,36 @@ which clue was judged wrong and why, what the solver guessed) and asked to
 fix it, up to --attempts tries in all. The best attempt is kept and marked as
 failed if none passed. Every attempt's details go to the report (git-ignored,
 since it names the words), saved after every word so an interrupted run picks
-up where it stopped. At the end the passing clues are written to
-data/clues.json, keyed by the schedule codes so the public file doesn't say
-which clues belong to which word. That step needs the schedule key.
+up where it stopped, and a one-line summary per word goes to a log next to it.
+The progress shown on screen never names a word.
 
-    python backend/scripts/generate_clues.py --sample 30 --report <file>   # pilot
-    python backend/scripts/generate_clues.py                               # all
-    python backend/scripts/generate_clues.py --export-only                 # rewrite clues.json
+The report is written to a temporary file and then moved into place, so a
+Ctrl+C or a kill leaves the last good report behind and a rerun redoes only
+the unfinished word. A word whose models fail (Ollama down, a timeout, bad
+JSON on every try) is logged and left out of the report, so a rerun tries it
+again; after MAX_ERRORS_IN_A_ROW such words the run stops.
+
+A run never writes data/clues.json. After a human has skimmed the report,
+--export-only writes the passing clues for the answer words, keyed by the
+schedule codes so the public file doesn't say which clues belong to which
+word. That step needs the schedule key.
+
+    python backend/scripts/generate_clues.py                                # all answers
+    python backend/scripts/generate_clues.py --words <file> --report <file> # other words
+    python backend/scripts/generate_clues.py --summary                      # counts only
+    python backend/scripts/generate_clues.py --export-only                  # write clues.json
 """
 
 import argparse
 import csv
 import json
+import os
 import random
 import re
 import sys
 import time
+from collections import Counter
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -81,8 +98,16 @@ CHECKER_MODEL = "gemma4:e2b"
 TARGETS_PATH = ROOT / "data" / "target_words.txt"
 DEFAULT_REPORT = ROOT / "data" / "raw" / "clue_report.json"
 
-MAX_WORDS = 16
+MAX_WORDS = 15  # per clue, as the writer's prompt says
 STRONG_MAX_RANK = 10  # "Boiling"
+OLLAMA_SEED = 7  # fixed sampling seed, so a rerun of the same prompt is comparable
+# Context Ollama reserves per model. Its default is the model's maximum (262k
+# tokens for the writer, about 12 GB); our longest conversation is a few
+# thousand tokens, and a prompt that would not fit is an error, not a silent cut.
+NUM_CTX = 8192
+MAX_ERRORS_IN_A_ROW = 3  # words whose models all failed before the run stops
+# Why a try failed, as recorded in the report and counted by --summary.
+FAILURE_KINDS = ("rules", "facts", "vague too easy", "strong too weak", "error")
 MAX_SENSES = 6
 NEIGHBOURS = 25  # how many nearest words show which sense the embeddings mean
 SENSE_MARGIN = 0.05  # how much closer a less frequent sense must be to be picked
@@ -105,6 +130,15 @@ STOPWORDS = set(
     "used into out than can one some who what this these those such".split()
 )
 
+# Words a clue uses without stating a fact ("It is a kind of ..."), ignored
+# when checking whether the medium clue's words come from the meaning.
+FILLER = set(
+    "it its this they them their you your he she his her has have had was were not no very "
+    "often usually most many much made make makes there where when while all also only more "
+    "less like so do does lot lots kind type piece part thing things something someone people "
+    "person place plain".split()
+)
+
 SYSTEM_PROMPT = (
     "You write clues for a daily word-guessing game. A player who is stuck "
     "unlocks one clue at a time, so the clues go from vague to strong. "
@@ -117,7 +151,7 @@ Meaning to use: {sense}
 Write {count} clues for "{word}" in this meaning only. Fill in the fields in this order:
 - meaning: the meaning above in your own plain words. The clues must all be about it.
 - strong: the clearest description of that meaning, so a player names this exact word and not a close relative of it.
-- medium: one detail that the meaning above gives (what it is made of, what it does, what it has or where it is), in your own plain words. Add no fact the meaning doesn't give. It should narrow the word down to a handful of words.
+- medium: take one detail straight from the meaning above (what it is made of, what it does, what it has or where it is) and say it in plain words. Every fact in the medium clue must be in the meaning; if the meaning doesn't say it, leave it out. Use a different detail from the strong clue, so the two clues tell the player different things.
 {vague}
 Rules for the clues:
 - Each is one plain sentence of at most 15 words.
@@ -201,12 +235,16 @@ def chat(model, messages, schema, temperature, num_predict=200):
             "think": False,
             "stream": False,
             "keep_alive": "30m",
-            "options": {"temperature": temperature, "num_predict": num_predict},
+            "options": {"temperature": temperature, "num_predict": num_predict,
+                        "seed": OLLAMA_SEED, "num_ctx": NUM_CTX},
         },
         timeout=300,
     )
     response.raise_for_status()
-    return json.loads(response.json()["message"]["content"])
+    body = response.json()
+    if body.get("prompt_eval_count", 0) + num_predict >= NUM_CTX:
+        raise RuntimeError(f"The prompt nearly fills the {NUM_CTX}-token context.")
+    return json.loads(body["message"]["content"])
 
 
 def ask(model, prompt, schema, temperature=0.0):
@@ -351,7 +389,7 @@ class Checker:
             if FORM_TALK.search(clue):
                 problems.append(f"The {name} clue talks about letters or sounds.")
             if len(tokens) > MAX_WORDS:
-                problems.append(f"The {name} clue is longer than 15 words.")
+                problems.append(f"The {name} clue is longer than {MAX_WORDS} words.")
             # A capital after the first word suggests a name. "I" and
             # abbreviations such as "TV" or "IDs" are fine. The first word is
             # always capitalised, so it's checked against the dictionary.
@@ -420,29 +458,63 @@ def solver_problems(word, ranks, guesses, fixed_vague=False):
     return problems
 
 
+def stem(token):
+    for suffix in ("ing", "ed", "es", "s", "er", "ly"):
+        if token.endswith(suffix) and len(token) - len(suffix) >= 3:
+            return token[:-len(suffix)]
+    return token
+
+
+def review_first(word, sense, medium):
+    """True when none of the medium clue's content words is in the meaning.
+
+    The medium clue should restate the meaning, so one that shares no word
+    with it is the likeliest to have invented a detail. On the hand-labelled
+    dev set this flagged about a third of the passing clues, and over half of
+    those were doubtful or wrong (against about a quarter of the rest). It
+    only orders the human skim; it doesn't fail anything.
+    """
+    meaning = {stem(w) for w in re.findall(r"[a-z]+", sense.lower())}
+    content = [t for t in re.findall(r"[a-z]+", medium.lower())
+               if len(t) > 2 and t not in STOPWORDS | FILLER and stem(t) != stem(word)]
+    return bool(content) and not any(stem(t) in meaning for t in content)
+
+
 def score(entry):
     """Order attempts: passing first, then by how close the strong clue got."""
     r3 = entry["solver_ranks"][2] if entry["solver_ranks"] else None
     return (entry["passed"], bool(entry["solver_ranks"]), -(r3 or 10**6))
 
 
+def solver_kinds(ranks):
+    """The FAILURE_KINDS a solver run shows (empty = pass)."""
+    kinds = []
+    if ranks[0] == 1:
+        kinds.append("vague too easy")
+    if ranks[2] is None or ranks[2] > STRONG_MAX_RANK:
+        kinds.append("strong too weak")
+    return kinds
+
+
 def check(checker, word, sense, written, vague=None):
-    """Run all three checks. Returns (clues, problems, ranks, guesses).
+    """Run all three checks. Returns (clues, problems, kinds, ranks, guesses).
 
     vague is the WordNet category clue, or None when the writer wrote one.
+    kinds names the FAILURE_KINDS found, so the report can be counted.
     """
     clues = [vague or str(written.get("vague", "")).strip(),
              str(written.get("medium", "")).strip(), str(written.get("strong", "")).strip()]
     problems = checker.rule_problems(word, clues)
     if problems:
-        return clues, problems, [], []
+        return clues, problems, ["rules"], [], []
     problems = [f'The {name} clue was judged wrong: {reason.strip().rstrip(".")}. '
                 'Replace it with something plainly true.'
                 for name, reason in checker.false_clues(word, sense, clues, vague is None)]
     if problems:
-        return clues, problems, [], []
+        return clues, problems, ["facts"], [], []
     ranks, guesses = checker.solve(word, clues)
-    return clues, solver_problems(word, ranks, guesses, vague is not None), ranks, guesses
+    return (clues, solver_problems(word, ranks, guesses, vague is not None), solver_kinds(ranks),
+            ranks, guesses)
 
 
 def writer_prompt(word, sense, categories):
@@ -477,15 +549,15 @@ def make_entry(checker, word, attempts, familiar):
             try:
                 written = chat(WRITER_MODEL, messages, schema, 0.6, num_predict=300)
             except OLLAMA_ERRORS as error:
-                tries.append({"error": str(error)})
+                tries.append({"error": str(error), "kinds": ["error"]})
                 continue
         vague = categories[level] if categories else None
         try:
-            clues, problems, ranks, guesses = check(checker, word, sense, written, vague)
+            clues, problems, kinds, ranks, guesses = check(checker, word, sense, written, vague)
         except OLLAMA_ERRORS as error:
             # The checker or solver failed (timeout, bad JSON): the same
             # clues are checked again on the next try, not the run stopped.
-            tries.append({"error": f"check failed: {error}"})
+            tries.append({"error": f"check failed: {error}", "kinds": ["error"]})
             continue
         giveaway = vague is not None and bool(ranks) and ranks[0] == 1
         if giveaway:
@@ -497,6 +569,8 @@ def make_entry(checker, word, attempts, familiar):
             "category": vague is not None,
             "passed": not problems,
             "reason": " ".join(problems) or "ok",
+            "kinds": kinds,
+            "review_first": review_first(word, sense, clues[1]),
             "solver_ranks": ranks,
             "solver_guesses": guesses,
         }
@@ -517,25 +591,140 @@ def make_entry(checker, word, attempts, familiar):
                  + "\nFix these and keep what was fine. Reply with all the fields again."},
             ]
             written = None
+    # error: no try got through the models, so the word isn't saved and a
+    # rerun tries it again.
     best = dict(best or {"clues": [], "passed": False, "reason": "no try finished (see tries)",
-                         "solver_ranks": [], "solver_guesses": []})
+                         "kinds": ["error"], "solver_ranks": [], "solver_guesses": [],
+                         "error": True})
     best["attempts"] = len(tries)
     best["tries"] = tries
     return best
 
 
-def load_words(sample, seed):
-    words = [w.strip() for w in TARGETS_PATH.read_text(encoding="utf-8").splitlines() if w.strip()]
+def read_words(path):
+    return [w.strip() for w in path.read_text(encoding="utf-8").splitlines() if w.strip()]
+
+
+def load_words(sample, seed, path=TARGETS_PATH):
+    words = read_words(path)
     if sample:
         words = random.Random(seed).sample(words, sample)
     return words
 
 
-def save(path, results):
+def write_atomic(path, text):
+    """Write text so that a crash or Ctrl+C at any moment leaves either the
+    old file or the new one, never half of either."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(path)
+    tmp = path.with_name(path.name + ".tmp")
+    with tmp.open("w", encoding="utf-8") as f:
+        f.write(text)
+        f.flush()
+        os.fsync(f.fileno())
+    for wait in (0.1, 0.5, 2.0, None):
+        try:
+            tmp.replace(path)
+            return
+        except PermissionError:  # Windows: another program has the file open
+            if wait is None:
+                raise
+            time.sleep(wait)
+
+
+def save(path, results):
+    write_atomic(path, json.dumps(results, ensure_ascii=False, indent=2))
+
+
+def log_path(report):
+    return report.with_name(report.stem + ".log")
+
+
+def log_line(report, text):
+    """Append one line to the run log next to the report (it names words)."""
+    with log_path(report).open("a", encoding="utf-8") as f:
+        f.write(f"{datetime.now():%Y-%m-%d %H:%M:%S} {text}\n")
+
+
+def clock(seconds):
+    minutes = round(seconds / 60)
+    return f"{minutes // 60}h{minutes % 60:02d}m" if minutes >= 60 else f"{minutes}m"
+
+
+def run(words, results, report, make, redo=()):
+    """Make an entry for each word not yet in results (or in redo), saving
+    after each one.
+
+    make(word) returns the entry. A redone word keeps its old entry until the
+    new one replaces it, so a stop part-way loses nothing. A word whose models fail is logged and
+    skipped (not saved, so a rerun tries it again). Progress on screen never
+    names a word; the log does. Returns the number of words that errored.
+    """
+    todo = [w for w in words if w not in results or w in redo]
+    done_before = len(words) - len(todo)
+    print(f"{len(todo)} words to do ({done_before} of {len(words)} already in {report.name})",
+          flush=True)
+    log_line(report, f"start: {len(todo)} to do, {done_before} already done")
+    started, finished, errors, in_a_row = time.time(), 0, 0, 0
+    for n, word in enumerate(todo, start=1):
+        word_started = time.time()
+        try:
+            entry = make(word)
+        except Exception as error:  # noqa: BLE001  one word must never stop the run
+            entry = {"error": True, "attempts": 0, "reason": f"{type(error).__name__}: {error}"}
+        seconds = time.time() - word_started
+        position = f"[{done_before + n}/{len(words)}]"
+        if entry.get("error"):
+            errors += 1
+            in_a_row += 1
+            print(f"{position} ERROR (models failed, will retry on the next run)", flush=True)
+            log_line(report, f"ERROR {word}: {entry.get('reason', '')}")
+            if in_a_row >= MAX_ERRORS_IN_A_ROW:
+                print(f"Stopping: {in_a_row} words in a row failed (is Ollama running?). "
+                      "Rerun the same command to carry on.", flush=True)
+                break
+            continue
+        in_a_row = 0
+        entry["seconds"] = round(seconds)
+        results[word] = entry
+        save(report, results)
+        finished += 1
+        mark = "PASS" if entry["passed"] else "FAIL"
+        per_word = (time.time() - started) / n
+        eta = clock(per_word * (len(todo) - n))
+        print(f"{position} {mark} ({entry['attempts']} tries, {per_word:.0f}s/word, ETA {eta})",
+              flush=True)
+        log_line(report, f"{mark} {word}: {entry['attempts']} tries, {seconds:.0f}s, "
+                         f"kinds {entry.get('kinds', [])}, ranks {entry['solver_ranks']}, "
+                         f"{entry['reason']}")
+    log_line(report, f"stop: {finished} saved, {errors} errors")
+    return errors
+
+
+def summary(results, words=None):
+    """Counts for the report, naming no words."""
+    entries = [results[w] for w in (words or results) if w in results]
+    lines = []
+    if words:
+        lines.append(f"In the report: {len(entries)} of {len(words)} words")
+    passed = sum(e["passed"] for e in entries)
+    lines.append(f"Passed: {passed}/{len(entries)}"
+                 + (f" ({100 * passed / len(entries):.0f}%)" if entries else ""))
+    final = Counter(k for e in entries if not e["passed"] for k in e.get("kinds", []))
+    lines.append("Failed words, last reason: "
+                 + (", ".join(f"{k} {final[k]}" for k in FAILURE_KINDS if final[k]) or "none"))
+    every = Counter(k for e in entries for t in e.get("tries", []) for k in t.get("kinds", []))
+    lines.append(f"All failed tries ({sum(len(e.get('tries', [])) for e in entries)} tries): "
+                 + (", ".join(f"{k} {every[k]}" for k in FAILURE_KINDS if every[k]) or "none"))
+    flagged = sum(1 for e in entries if e["passed"] and e.get("review_first"))
+    lines.append(f"Passing sets to review first (medium clue shares no word with the meaning): "
+                 f"{flagged}")
+    tries = Counter(e["attempts"] for e in entries if e["passed"])
+    lines.append("Tries per passing word: "
+                 + (", ".join(f"{n}: {tries[n]}" for n in sorted(tries)) or "none"))
+    seconds = [e["seconds"] for e in entries if "seconds" in e]
+    if seconds:
+        lines.append(f"Time: {clock(sum(seconds))} in all, {sum(seconds) / len(seconds):.0f}s/word")
+    return "\n".join(lines)
 
 
 def export(results, path, schedule_path=SCHEDULE_PATH):
@@ -545,50 +734,55 @@ def export(results, path, schedule_path=SCHEDULE_PATH):
         return
     # With the wrong key every code is wrong, and the server would quietly
     # find no clues for any puzzle. The right key decodes the schedule.
-    targets = [w.strip() for w in TARGETS_PATH.read_text(encoding="utf-8").splitlines() if w.strip()]
-    if not any(decode(read_codes(schedule_path), key, set(targets) | set(results))):
+    targets = set(read_words(TARGETS_PATH))
+    if not any(decode(read_codes(schedule_path), key, targets | set(results))):
         print(f"The schedule key doesn't decode {schedule_path.name} (wrong key?): clues.json not written")
         return
-    passed = {word_code(w, key): e["clues"] for w, e in sorted(results.items()) if e["passed"]}
-    path.write_text(json.dumps(passed, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
-    print(f"Wrote clues for {len(passed)} words to {path}")
+    # Only answers: a report made with --words (a test set) must never leak in.
+    others = sum(1 for w in results if w not in targets)
+    passed = {word_code(w, key): e["clues"] for w, e in sorted(results.items())
+              if e["passed"] and w in targets}
+    write_atomic(path, json.dumps(passed, ensure_ascii=False, indent=1) + "\n")
+    print(f"Wrote clues for {len(passed)} words to {path}"
+          + (f" (left out {others} words that aren't answers)" if others else ""))
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--report", type=Path, default=DEFAULT_REPORT)
     parser.add_argument("--clues", type=Path, default=CLUES_PATH)
-    parser.add_argument("--export-only", action="store_true", help="only rewrite the clues file")
+    parser.add_argument("--words", type=Path, default=TARGETS_PATH,
+                        help="word list to run on (default: the answers)")
+    parser.add_argument("--export-only", action="store_true",
+                        help="write the passing answers' clues to the clues file, then stop")
+    parser.add_argument("--summary", action="store_true", help="print counts only, then stop")
     parser.add_argument("--sample", type=int, default=0, help="random sample of N words")
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--attempts", type=int, default=4)
     parser.add_argument("--redo-failed", action="store_true", help="retry words that failed before")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     results = json.loads(args.report.read_text(encoding="utf-8")) if args.report.exists() else {}
     if args.export_only:
         export(results, args.clues)
         return
+    words = load_words(args.sample, args.seed, args.words)
+    if args.summary:
+        print(summary(results, words))
+        return
 
     checker = Checker(WordGameEngine())
     familiar = familiar_words()
-    words = load_words(args.sample, args.seed)
-    todo = [w for w in words if w not in results or (args.redo_failed and not results[w]["passed"])]
-    print(f"{len(todo)} words to do ({len(results)} already in {args.report.name})")
-
-    started = time.time()
-    for n, word in enumerate(todo, start=1):
-        entry = make_entry(checker, word, args.attempts, familiar)
-        results[word] = entry
-        save(args.report, results)
-        mark = "PASS" if entry["passed"] else "FAIL"
-        per_word = (time.time() - started) / n
-        print(f"[{n}/{len(todo)}] {mark} {word}: ranks {entry['solver_ranks']} "
-              f"({entry['reason']}, {entry['attempts']} tries, {per_word:.0f}s/word)", flush=True)
-
-    passed = sum(1 for w in words if results.get(w, {}).get("passed"))
-    print(f"Done: {passed}/{len(words)} passed")
-    export(results, args.clues)
+    redo = {w for w in words if w in results and not results[w]["passed"]} if args.redo_failed \
+        else set()
+    try:
+        run(words, results, args.report, lambda w: make_entry(checker, w, args.attempts, familiar),
+            redo)
+    except KeyboardInterrupt:
+        print("\nStopped. Finished words are saved; rerun the same command to carry on.")
+        sys.exit(130)
+    print(summary(results, words))
+    print("Not exported. Skim the report, then run with --export-only to write the clues file.")
 
 
 if __name__ == "__main__":

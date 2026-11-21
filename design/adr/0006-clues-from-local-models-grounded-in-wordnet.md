@@ -1,7 +1,7 @@
 # ADR 0006: Generate clues offline with small local models, grounded in WordNet and checked by a solver
 
 - **Status:** Accepted
-- **Date:** 2026-11-08 (vague and medium clues revised 2026-11-12)
+- **Date:** 2026-11-08 (vague and medium clues revised 2026-11-12; medium prompt, review flag and run safety 2026-11-21)
 
 ## Context
 
@@ -24,13 +24,22 @@ The project prefers to run on free, local tools, and the generation only has to 
   - **Facts:** the second model, given the same meaning, looks for errors.
   - **Solver:** the second model guesses the word from the clues one at a time, and its guesses are ranked exactly like a player's. The strongest clue must bring it into the top 10, and the vague clue alone must not.
 - **Targeted retries:** a failed set goes back to the writer with exactly what failed, up to four tries.
-- **Keep it reviewable:** every attempt goes to a git-ignored report, saved after each word so a long run can resume, and a human skims the clues before they're exported.
+- **Keep it reviewable:** every attempt goes to a git-ignored report, saved after each word so a long run can resume, and a human skims the clues before they're exported. A run never exports by itself: `--export-only` is a separate step. Sets whose medium clue shares no word with the dictionary meaning are marked `review_first`.
+- **Tune on words that aren't answers.** Prompt changes are measured on a test set drawn from the answer candidates, with hand-labelled facts, never on the answers themselves.
 
 ## Alternatives considered
 
 - **A large hosted model.** An early pilot had many wrong clues, and a bigger model was the obvious suggestion. Measurement showed most failures came from the prompt and the pipeline (recalling facts from memory, the wrong sense, blind retries), not the model. After those fixes, the small local models passed most of the pilot. A hosted model would need a key, cost money, and still need the same checks.
 - **Generating clues live per request.** It needs a model on the server, makes clues differ between players, and can't be reviewed before players see them.
 - **Hand-written clues.** The best quality, but practical only for a small answer list. The pipeline is designed so a human edits its output instead of starting from nothing.
+
+## Tuning results (2026-11-21)
+
+On a 50-word test set, one change at a time against the then-current prompts:
+
+- **Kept:** a medium-clue instruction to take its detail straight from the meaning and add no other fact. Passes went from 43 to 45 (within noise), failed fact checks from 11 to 8, and hand-labelled wrong or doubtful medium clues from 9/20 to 5/20.
+- **Dropped:** two worked examples instead of one (41 passed, more rule failures), and more specific revision feedback (40 passed).
+- **Dropped:** a strict checker that judges every clue against the definition only. It caught 6 of 8 wrong clues instead of 2, but rejected 22 of 35 correct ones instead of 3.
 
 ## Consequences
 
