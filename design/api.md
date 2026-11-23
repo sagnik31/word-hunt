@@ -7,8 +7,9 @@ The backend is a FastAPI app. While it's running, full request and response sche
 | Method | Endpoint        | Description |
 | ------ | --------------- | ----------- |
 | GET    | `/health`       | Reports whether the engine and the schedule loaded, and whether a results database is configured (`results`; not checked, so Neon can stay asleep). Returns 503 with `"status": "degraded"` when they didn't load, so Render's health check fails a broken deploy. |
-| GET    | `/today`        | Today's puzzle number, the UTC date, the launch date and the seconds until the next puzzle. Every puzzle from 1 to today's is playable. |
-| POST   | `/guess`        | Body: `{"puzzle": 7, "word": "...", "stats": {...}, "device_id": "..."}`. Returns rank, similarity, percentile and temperature label. `matched` holds the base word when a plural or verb form was scored as it (`mittens` → `mitten`). Includes the score on a correct guess, computed from `stats`; a correct guess on the puzzle's own day is stored as this device's result. |
+| GET    | `/`             | The API's name and a list of its endpoints. |
+| GET    | `/today`        | Today's puzzle number, the UTC date, the launch date and the seconds until the next puzzle. Every puzzle from 1 to today's is playable. 503 when no puzzle is scheduled for today (before the launch date, or once the schedule has run out). |
+| POST   | `/guess`        | Body: `{"puzzle": 7, "word": "...", "stats": {...}, "device_id": "..."}`. Returns rank, similarity, percentile and temperature label. `matched` holds the base word when a plural or verb form was scored as it (`mittens` → `mitten`). A word that isn't in the guess list (including every proper noun) is still a 200, with `valid: false` and an `error` message. Includes the score on a correct guess, computed from `stats`; a correct guess on the puzzle's own day is stored as this device's result. |
 | GET    | `/puzzle/{n}`   | `{"puzzle", "clue_total"}`: how many written clues puzzle `n` has (0 when none). |
 | POST   | `/hint`         | Body: `{"puzzle": 7, "best_rank": 120, "hints_used": 0}`. Returns an everyday word ranked #6–10 (first hint) or #2–5 (second), always better than `best_rank`. 409 when no hint is left to give. |
 | POST   | `/clue`         | Body: `{"puzzle": 7, "clues_used": 0}`. Returns the next written clue, `{"clue", "number", "total"}`. 404 if the puzzle has no clues, 409 when they're used up. |
@@ -24,4 +25,5 @@ The backend is a FastAPI app. While it's running, full request and response sche
   - `best_rank`.
 - **`device_id`** is optional: the browser's random ID, so results count once per device. One that doesn't look like an ID (8–64 letters, digits and dashes) is ignored, never refused.
 - **404:** a puzzle that hasn't been released yet.
+- **503:** the server started but couldn't load the embeddings or the schedule (for example, no schedule key). `/health` reports `degraded` in that case.
 - **422:** values a browser can't send: a non-finite clock or one over ten years, counts over 100,000, a word over 100 characters. The error doesn't echo the input.

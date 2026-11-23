@@ -171,7 +171,7 @@ def test_clues_for_future_puzzles_are_refused(client):
     assert client.post("/clue", json={"puzzle": 3, "clues_used": 0}).status_code == 404
 
 
-# --- Results (0.6) ----------------------------------------------------------
+# --- Results ----------------------------------------------------------------
 
 ME = "11111111-2222-4333-8444-555555555555"
 WIN_STATS = {"elapsed_seconds": 90, "guess_count": 7, "clue_count": 0, "hint_count": 0}

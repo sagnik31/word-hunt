@@ -58,9 +58,9 @@ word-hunt/
 │   ├── dependencies.py   Shared request helpers (engine, schedule, saving results)
 │   ├── routes/           One router per endpoint group
 │   ├── actions/          Guess and hint logic
-│   ├── utils/            File loaders, plural and verb-form rules, temperature labels
+│   ├── utils/            File loaders, plural and verb-form rules, percentiles and temperature labels
 │   ├── scripts/          Offline data pipeline
-│   └── tests/            API, engine, scoring, results and word-list tests
+│   └── tests/            API, engine, scoring, results, word-list, word-form, clue-generator and frontend-copy tests
 ├── data/
 │   ├── guess_words.txt      Words you can guess
 │   ├── answer_list.txt      The answers (hand-picked)
@@ -70,12 +70,14 @@ word-hunt/
 │   ├── irregular_plurals.txt Irregular plurals ("larvae"), so they win when the singular is the answer
 │   ├── embeddings.npz       GloVe vectors for every guess word
 │   ├── daily_schedule.txt   Which answer on which day (hashed)
-│   ├── clues.json           Written clues per answer (keyed by schedule code, once generated)
+│   ├── clues.json           Three written clues per answer (keyed by schedule code)
 │   ├── target_blocklist.txt Words that are never the answer (hand-edited)
-│   └── proper_nouns.txt     Extra proper nouns to exclude (hand-edited)
+│   ├── proper_nouns.txt     Extra proper nouns to exclude (hand-edited)
+│   └── WORDNET_LICENSE.txt  WordNet's licence notice, which it asks every copy to carry
 ├── design/               Architecture, API and pipeline docs, and the decision records
 ├── docs/                 Frontend, served by GitHub Pages
 ├── .github/workflows/    CI: tests, ruff and node --check on every push
 ├── build.sh, start.sh    Render build and start commands
+├── run_backend.bat       Local run on Windows, using .venv
 └── requirements*.txt     Server, dev and script dependencies
 ```

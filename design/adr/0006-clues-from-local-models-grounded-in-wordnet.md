@@ -1,7 +1,7 @@
 # ADR 0006: Generate clues offline with small local models, grounded in WordNet and checked by a solver
 
 - **Status:** Accepted
-- **Date:** 2026-11-08 (vague and medium clues revised 2026-11-12; medium prompt, review flag and run safety 2026-11-21)
+- **Date:** 2026-11-08 (vague and medium clues revised 2026-11-12; medium prompt, review flag and run safety 2026-11-21; failed sets ship 2026-11-23)
 
 ## Context
 
@@ -43,7 +43,7 @@ On a 50-word test set, one change at a time against the then-current prompts:
 
 ## Consequences
 
-- A full run is slow on a CPU (about a minute per word), so clues are generated for the final answer list, not every candidate.
+- A full run is slow on a CPU (about 45 seconds per word), so clues are generated for the final answer list, not every candidate.
 - The fact check catches only some subtly wrong details, so **the clues need a human skim** whichever model writes them.
 - **Failed sets ship too (owner's call, 2026-11-23).** After the run and two redo rounds, 187 of 200 answers passed. Rather than leave 13 days without clues, `--export-only` writes every full set. The help ladder, unlock gates and costs are the same on every puzzle, so nothing in the game changes; those days just get a weaker or flawed set. Of the 13: 9 have a strong clue that didn't bring the solver into the top 10 (rules and facts passed), 2 have a vague clue that alone gave the word away (on those days Clue 1 is worth more than its 5-point cost), 1 tripped the letters-or-sounds check, and 1 has a clue the fact checker judged wrong. The owner's skim of the failed sets is the safeguard for the last two kinds, and none of the 13 failed the answer-form or name checks.
 - An answer whose models never finished a try still has no clues, and the help ladder skips straight to hints.

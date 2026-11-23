@@ -42,7 +42,7 @@ The thresholds are constants at the top of `build_word_lists.py`. A word counts 
 
 **Common edits:**
 
-- **Change the answers:** edit `data/answer_list.txt` (one word per line), rerun `build_word_lists.py`, then `build_schedule.py`. The build stops and names any word that fails a check.
+- **Change the answers:** edit `data/answer_list.txt` (one word per line; anything after a `#` is a comment), rerun `build_word_lists.py`, then `build_schedule.py`. The build stops and names any word that fails a check. New answers need clues too: run `generate_clues.py` (it skips words already in the report), then `--export-only`.
 - **Keep a word from ever being an answer:** add it to `data/target_blocklist.txt`.
 - **Ban a proper noun that slipped through:** add it to `data/proper_nouns.txt` and rerun `build_word_lists.py`.
 
@@ -55,6 +55,8 @@ python backend/scripts/build_schedule.py
 It shuffles the answers into `data/daily_schedule.txt`, where line N is puzzle #N and puzzle #1 is `LAUNCH_DATE` in `backend/config.py`. Each line is an HMAC of the word, so it needs the schedule key (`WORDHUNT_SCHEDULE_KEY` or `schedule.key`).
 
 Rerunning it never changes today's or earlier puzzles. It drops future words that are no longer answers and appends new ones, and no word repeats. Changing `LAUNCH_DATE` or deleting the file would change puzzles people have already played.
+
+There's one puzzle per answer, so the schedule runs out after as many days as there are answers: with today's 200, the last puzzle is on 2027-06-10. After that, `/today` returns 503 and the page says there's no puzzle today, so add answers (and their clues) well before then.
 
 A relaunch, which starts again at puzzle #1, is a one-off decision (ADR 0003; done on 2026-11-23). Set `LAUNCH_DATE` to the launch day, empty `data/daily_schedule.txt`, rerun the script with the **same key** and rerun `generate_clues.py --export-only`. Clues are keyed by word and key, not by puzzle number, so the clues file comes out the same. Browsers move saves from the old launch aside by themselves (ADR 0004). If the results table already has rows, empty it, because a device's first result for a puzzle number wins.
 
@@ -93,7 +95,7 @@ When a set fails, the writer is told exactly what went wrong and asked to fix it
 **Running it:**
 
 - On a 50-word test set of non-answers (2026-11-21), 45 sets passed. Of 20 hand-labelled passing medium clues, 15 were correct, 4 doubtful and 1 wrong; the fact checker catches only about a quarter of wrong clues. **Skim the report before using the clues.** Sets marked `review_first` (the medium clue shares no word with the dictionary meaning) are the likeliest to hold an invented detail, so read those first.
-- On a CPU it takes about 50 seconds per word, about 3 hours for 200.
+- On a CPU it takes about 45 seconds per word: the run for the 200 answers took about 2.5 hours.
 - Each request asks Ollama for an 8,192-token context (`NUM_CTX`). Ollama's default is the model's maximum, which made the writer hold about 12 GB of RAM. A prompt that would nearly fill the context is an error for that word, never a silent cut.
 - Progress goes to `data/raw/clue_report.json` after every word (git-ignored, since it names the words), written to a temporary file and then moved into place, so Ctrl+C or a kill never damages it. Rerun the same command to carry on: only unfinished words are done. A one-line summary per word goes to `data/raw/clue_report.log`; the screen shows only counts, never words.
 - A word whose models fail (Ollama down, timeouts) is logged and tried again on the next run; after 3 in a row the run stops.

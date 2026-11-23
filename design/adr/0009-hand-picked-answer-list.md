@@ -28,5 +28,5 @@ The owner decided on a shorter list of about 200, each checked by hand, with clu
 
 - **Changing the answers** means editing `data/answer_list.txt`, rerunning `build_word_lists.py`, then `build_schedule.py`. The schedule script still never changes released puzzles.
 - **The list isn't secret.** Like the old `target_words.txt`, it's committed. The schedule's hashing (ADR 0003) hides which day uses which word, not which words are answers.
-- **About 200 answers last about 200 days,** so the list has to grow before it runs out, from the candidates file or elsewhere.
+- **About 200 answers last about 200 days,** so the list has to grow before it runs out, from the candidates file or elsewhere. Since the 2026-11-23 relaunch the last scheduled puzzle is on 2027-06-10; after that `/today` returns 503 and there's no puzzle until more answers (with their clues) are added.
 - **The list is small enough to audit:** for each answer, its nearest neighbours, what the hints can reveal, and how its plurals and spellings are matched.
