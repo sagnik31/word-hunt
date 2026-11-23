@@ -87,6 +87,61 @@ def test_export_leaves_out_words_that_arent_answers(tmp_path, monkeypatch):
     assert list(json.loads(clues.read_text(encoding="utf-8"))) == [gc.word_code(WORD, "key")]
 
 
+def _problems(checker, word, vague, medium="A tool for making music.", strong="Played with a bow."):
+    return checker.rule_problems(word, [vague, medium, strong])
+
+
+def test_a_clean_set_has_no_rule_problems(checker):
+    assert checker.rule_problems(WORD, [WRITTEN["vague"], WRITTEN["medium"], WRITTEN["strong"]]) == []
+
+
+@pytest.mark.parametrize("clues", [[], ["One.", "Two."], ["One.", "  ", "Three."], ["One.", None, "Three."]])
+def test_all_three_clues_are_needed(checker, clues):
+    assert checker.rule_problems(WORD, clues) == ["Write all three clues."]
+
+
+# "violin" and "ladder" aren't answers. Each clue below gives the word away:
+# the word itself, a plural, a compound that contains it, a word on its stem.
+@pytest.mark.parametrize("word, clue", [
+    ("violin", "A small violin."),
+    ("violin", "Violins play in an orchestra."),
+    ("ladder", "A stepladder is one kind."),
+    ("violin", "What a violinist plays."),
+])
+def test_a_clue_that_gives_the_word_away_is_caught(checker, word, clue):
+    assert any("gives away the word" in p for p in _problems(checker, word, clue))
+
+
+@pytest.mark.parametrize("clue", [
+    "It starts with a vowel.",
+    "Rhymes with a fruit.",
+    "Has three syllables.",
+    "Spelled with a double letter.",
+    "Contains the letter 'v' twice.",
+    "Sounds like a word for wine.",
+])
+def test_talk_of_letters_or_sounds_is_caught(checker, clue):
+    assert any("letters or sounds" in p for p in _problems(checker, "violin", clue))
+
+
+def test_a_name_inside_a_clue_is_caught(checker):
+    problems = _problems(checker, "violin", "Played in every orchestra in Vienna.")
+    assert 'The vague clue contains the name "Vienna".' in problems
+
+
+@pytest.mark.parametrize("clue", ["I hear it on TV often.", "Musicians keep spare IDs nearby."])
+def test_i_and_abbreviations_are_not_names(checker, clue):
+    assert not [p for p in _problems(checker, "violin", clue) if "name" in p]
+
+
+def test_each_problem_names_its_clue(checker):
+    problems = checker.rule_problems("violin", ["A string instrument.", "Rhymes with a fruit.", "A violin."])
+    assert problems == [
+        "The medium clue talks about letters or sounds.",
+        'The strong clue uses "violin", which gives away the word.',
+    ]
+
+
 @pytest.mark.parametrize("length, ok", [(gc.MAX_WORDS, True), (gc.MAX_WORDS + 1, False)])
 def test_clue_length_matches_the_prompt(checker, length, ok):
     assert gc.MAX_WORDS == 15  # the writer's prompt says "at most 15 words"

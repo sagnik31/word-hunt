@@ -84,3 +84,38 @@ def test_answers_are_the_hand_picked_list():
         for line in _words("answer_list.txt")
     } - {""}
     assert set(_words("target_words.txt")) == picked
+
+
+def test_hint_words_are_clean_guess_words_with_no_proper_nouns():
+    # A hint reveals one of these words on screen, so the proper-noun rule
+    # applies here too.
+    hints = _words("hint_words.txt")
+    assert hints == sorted(set(hints))
+    assert set(hints) <= set(_words("guess_words.txt"))
+    assert not PROPER_NOUNS & set(hints)
+    listed = {line.split("#", 1)[0].strip() for line in _words("proper_nouns.txt")} - {""}
+    assert not listed & set(hints)
+    # Only ordinary words: no inflected forms such as "skidded".
+    assert "skidded" not in hints and {"fishing", "glasses"} <= set(hints)
+
+
+def test_shipped_clues_match_the_schedule():
+    # Checked without the key, so no answer is decoded: every clue set belongs
+    # to a scheduled puzzle and has three short clues.
+    import json
+    import re
+
+    clues = json.loads((DATA_DIR / "clues.json").read_text(encoding="utf-8"))
+    codes = {line.strip() for line in _words("daily_schedule.txt") if line.strip() and not line.startswith("#")}
+    word = re.compile(r"[A-Za-z][A-Za-z'-]*")
+    # Counts only: a failure must never print a clue (it would spoil a puzzle).
+    stray = len(set(clues) - codes)
+    malformed = sum(
+        not (isinstance(v, list) and len(v) == 3 and all(isinstance(c, str) and c.strip() for c in v))
+        for v in clues.values()
+    )
+    too_long = sum(
+        len(word.findall(c)) > 15  # MAX_WORDS in generate_clues.py
+        for v in clues.values() if isinstance(v, list) for c in v if isinstance(c, str)
+    )
+    assert (stray, malformed, too_long) == (0, 0, 0)

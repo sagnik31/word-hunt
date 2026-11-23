@@ -62,7 +62,7 @@ for f in docs/js/*.js; do node --check "$f"; done
 ```
 
 - Use `python -m pytest` rather than `pytest`, so the repository root is on the import path.
-- The tests build their own schedule and use an in-memory SQLite results store, so they need neither the key nor a database. They also check the generated word lists (for example, that no proper noun appears) and that the help costs shown in the frontend and the README match `backend/scoring.py`.
+- The tests build their own schedule and use an in-memory SQLite results store, so they need neither the key nor a database. They also check the generated word lists (for example, that no proper noun appears, hint words included), that the shipped `data/clues.json` fits the schedule (checked without the key, reporting counts only so a failure never prints a clue), and that the help costs shown in the frontend and the README match `backend/scoring.py`. The clue-generator tests cover each clue rule: all three clues, no giveaway forms, no talk of letters or sounds, no names, and the length limit.
 - `node --check` checks only its first argument, so run it once per file.
 - GitHub Actions runs the same three checks on every push to `main` ([`.github/workflows/checks.yml`](../.github/workflows/checks.yml)). The clue-generator tests are skipped there, because they need WordNet's data.
 
