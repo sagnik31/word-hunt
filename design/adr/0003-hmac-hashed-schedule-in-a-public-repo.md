@@ -27,6 +27,6 @@ Every player gets the same secret word each UTC day. The repository is public, a
 - Losing the key makes the schedule and the clues unreadable. It has to be backed up outside the repo.
 - A fork can't read the original schedule. It builds its own with a new key (`build_schedule.py --new-key`, writing to a separate `WORDHUNT_SCHEDULE_PATH`).
 - The tests and CI never see the real key. They build their own throwaway schedule.
-- Changing `LAUNCH_DATE` or deleting the schedule file would change puzzles people have already played, so both are treated as one-off relaunch decisions.
+- Changing `LAUNCH_DATE` or deleting the schedule file would change puzzles people have already played, so both are treated as one-off relaunch decisions. This has happened once: on 2026-11-23 the game started again at puzzle #1 with the hand-picked answers ([ADR 0009](0009-hand-picked-answer-list.md)), with a fresh schedule built under the same key so the clues still match.
 - The hashes hide words only from people without the key. Since the vocabulary is public and small, the key must be long and random, not a guessable phrase.
 - Anything that would reveal an answer (a decoded schedule, a clue report naming words, a startup log line) stays out of committed files and logs.

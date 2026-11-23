@@ -19,7 +19,7 @@ HINT_WORDS_PATH = DATA_DIR / "hint_words.txt"  # words ordinary enough to reveal
 
 # Daily puzzle. Puzzle #1 is LAUNCH_DATE; a new puzzle starts at midnight UTC.
 # Puzzle #1 went live on this day. Changing it shifts every puzzle's date.
-LAUNCH_DATE = date(2026, 11, 8)
+LAUNCH_DATE = date(2026, 11, 23)
 
 # Built by backend/scripts/build_schedule.py. One scrambled code per line, so
 # the public repo doesn't give away future answers; decoding needs the key.

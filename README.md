@@ -77,7 +77,7 @@ To play locally, serve a copy of `docs/` pointed at your backend; see [Developme
 
 ## Limitations
 
-- Progress lives in the browser, so it doesn't sync between devices, and clearing site data resets the streak.
+- Progress lives in the browser, so it doesn't sync between devices, and clearing site data resets the streak. The game relaunched at puzzle #1 on 23 November 2026, and progress from before then isn't shown.
 - Scores use the stats the browser reports, so a determined player could fake them. That skews only the "you beat X%" comparison.
 - A play counts towards its day only if it finishes before midnight UTC.
 - Clues come from small local models and need a human skim. Some answers have none.

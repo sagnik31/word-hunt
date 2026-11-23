@@ -56,6 +56,8 @@ It shuffles the answers into `data/daily_schedule.txt`, where line N is puzzle #
 
 Rerunning it never changes today's or earlier puzzles. It drops future words that are no longer answers and appends new ones, and no word repeats. Changing `LAUNCH_DATE` or deleting the file would change puzzles people have already played.
 
+A relaunch, which starts again at puzzle #1, is a one-off decision (ADR 0003; done on 2026-11-23). Set `LAUNCH_DATE` to the launch day, empty `data/daily_schedule.txt`, rerun the script with the **same key** and rerun `generate_clues.py --export-only`. Clues are keyed by word and key, not by puzzle number, so the clues file comes out the same. Browsers move saves from the old launch aside by themselves (ADR 0004). If the results table already has rows, empty it, because a device's first result for a puzzle number wins.
+
 For your own fork, make a new key and a separate schedule file:
 
 ```bash

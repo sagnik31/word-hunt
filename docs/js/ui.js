@@ -224,6 +224,7 @@ export class GameUI {
             return;
         }
         this.launchDate = today.launch_date;
+        this.progress.useLaunch(this.launchDate);
         this.today = today.puzzle;
         this.setStatus("Server online.", "ok");
         this.route();

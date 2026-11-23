@@ -39,7 +39,7 @@ Plain HTML, CSS and JavaScript ES modules in `docs/`, with no build step:
 
 - `docs/js/config.js`: the backend's URL.
 - `docs/js/api.js`: calls to the API, with a timeout long enough for the free server to wake up.
-- `docs/js/storage.js`: progress, streaks and the device ID in `localStorage`, including migrations of old saves.
+- `docs/js/storage.js`: progress, streaks and the device ID in `localStorage`, including migrations of old saves. Saves are tied to the server's launch date, and saves from an earlier launch move to a backup key.
 - `docs/js/ui.js`: rendering, startup retries, the help-unlock rules and a display copy of the help costs.
 - `docs/js/main.js`: wiring and startup.
 

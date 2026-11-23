@@ -4,6 +4,10 @@
 const STORAGE_KEY = "wordhunt:v1";
 const DEVICE_KEY = "wordhunt:device";
 const DAY_MS = 24 * 60 * 60 * 1000;
+// Puzzle numbers restart when the game relaunches, so a save belongs to one
+// launch date. Saves from before the date was stored come from the first launch.
+const FIRST_LAUNCH = "2026-11-08";
+const OLD_SAVES_PREFIX = "wordhunt:old:";
 
 function readAll() {
     try {
@@ -44,6 +48,29 @@ function newGame() {
 export class Progress {
     constructor() {
         this.data = readAll();
+    }
+
+    // Match the saves to the server's launch date. After a relaunch the old
+    // games would land on the new puzzles with the same numbers, so they move
+    // to a backup key and play starts afresh.
+    useLaunch(launchDate) {
+        const saved = this.data.launch || FIRST_LAUNCH;
+        if (saved === launchDate) {
+            if (!this.data.launch) {
+                this.data.launch = launchDate;
+                writeAll(this.data);
+            }
+            return;
+        }
+        if (Object.keys(this.data.games).length > 0) {
+            try {
+                localStorage.setItem(OLD_SAVES_PREFIX + saved, JSON.stringify(this.data));
+            } catch (err) {
+                console.warn("Could not back up old progress:", err);
+            }
+        }
+        this.data = { launch: launchDate, games: {} };
+        writeAll(this.data);
     }
 
     game(puzzle) {
