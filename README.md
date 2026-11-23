@@ -80,15 +80,16 @@ To play locally, serve a copy of `docs/` pointed at your backend; see [Developme
 - Progress lives in the browser, so it doesn't sync between devices, and clearing site data resets the streak. The game relaunched at puzzle #1 on 23 November 2026, and progress from before then isn't shown.
 - Scores use the stats the browser reports, so a determined player could fake them. That skews only the "you beat X%" comparison.
 - A play counts towards its day only if it finishes before midnight UTC.
-- Clues come from small local models and need a human skim. Some answers have none.
+- Clues come from small local models and were skimmed by hand. A few sets failed an automatic check and ship anyway, so some clues are weaker than others.
 - Under consideration: leaderboards, timed and category-based modes, and UI polish.
 
-## Data sources
+## Data sources and licences
 
-- **GloVe:** Pennington, Socher & Manning (2014), *GloVe: Global Vectors for Word Representation*. The 6B 300d vectors.
-- **Concreteness ratings:** Brysbaert, Warriner & Kuperman (2014), *Concreteness ratings for 40 thousand generally known English word lemmas*, Behavior Research Methods 46(3), 904–911, doi:10.3758/s13428-013-0403-5. Original data at [osf.io/kj76e](https://osf.io/kj76e/); the game uses the [Hugging Face mirror](https://huggingface.co/datasets/StephanAkkerman/concreteness-ratings).
-- **WordNet:** Princeton University, via NLTK. Used to detect proper nouns and to give the clue writer each word's meaning.
+- **GloVe:** Pennington, Socher & Manning (2014), *GloVe: Global Vectors for Word Representation*. The 6B 300d vectors, released by Stanford under the [Open Data Commons Public Domain Dedication and License](https://opendatacommons.org/licenses/pddl/). `data/embeddings.npz` holds the vectors of the guess words, scaled to unit length.
+- **Concreteness ratings:** Brysbaert, Warriner & Kuperman (2014), *Concreteness ratings for 40 thousand generally known English word lemmas*, Behavior Research Methods 46(3), 904–911, doi:10.3758/s13428-013-0403-5. Original data at [osf.io/kj76e](https://osf.io/kj76e/), shared there with the authors' permission and with no licence stated; the game uses the [Hugging Face mirror](https://huggingface.co/datasets/StephanAkkerman/concreteness-ratings), whose MIT label is the uploader's. Its subtitle frequencies are from SUBTLEX-US (Brysbaert & New, 2009). The repository ships only word lists picked with these ratings, not the ratings themselves.
+- **WordNet:** Princeton University, via NLTK. Used to detect proper nouns, find word forms, and give the clue writer each word's meaning and category. WordNet 3.0 Copyright 2006 by Princeton University. All rights reserved. Its licence, notice and disclaimer are in [data/WORDNET_LICENSE.txt](data/WORDNET_LICENSE.txt).
+- **Clues:** written by Qwen3.5 4B (Apache 2.0) and checked by Gemma, both run locally through Ollama.
 
 ## License
 
-Released under the MIT License. See [LICENSE](LICENSE).
+The code is released under the MIT License. See [LICENSE](LICENSE). The data sources above keep their own terms.
