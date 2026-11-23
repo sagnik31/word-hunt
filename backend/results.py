@@ -36,6 +36,10 @@ GUESS_BUCKETS: Tuple[Tuple[int, Optional[int]], ...] = (
     (101, None),
 )
 
+# Postgres cancels any results query that runs longer than this, so a stuck
+# query can't hold the shared connection (and every request waiting on it).
+QUERY_TIMEOUT_MS = 5000
+
 # What the browser may send as its device ID (it sends a UUID).
 DEVICE_ID_PATTERN = r"^[A-Za-z0-9-]{8,64}$"
 _DEVICE_ID_RE = re.compile(DEVICE_ID_PATTERN)
@@ -98,14 +102,17 @@ class ResultStore:
                     if self._conn is None:
                         self._conn = self._connect()
                         self._conn.execute(SCHEMA)
-                    cur = self._conn.execute(sql, params)
-                    return cur.fetchall() if fetch else cur.rowcount
+                    return self._execute(sql, params, fetch)
                 except Exception:
                     # A dropped connection (Neon paused) or a broken one:
                     # start again with a fresh connection, once.
                     self._drop_connection()
                     if attempt == 2:
                         raise
+
+    def _execute(self, sql: str, params: Sequence, fetch: bool):
+        cur = self._conn.execute(sql, params)
+        return cur.fetchall() if fetch else cur.rowcount
 
     def _drop_connection(self):
         if self._conn is not None:
@@ -170,6 +177,14 @@ class PostgresResultStore(ResultStore):
         # prepare_threshold=None: no server-side prepared statements, which
         # a pooled (PgBouncer) connection string may not support.
         return psycopg.connect(self.url, autocommit=True, connect_timeout=10, prepare_threshold=None)
+
+    def _execute(self, sql: str, params: Sequence, fetch: bool):
+        # SET LOCAL lasts for this transaction only. A session-wide SET could
+        # stick to a pooled server connection that other clients then use.
+        with self._conn.transaction():
+            self._conn.execute(f"SET LOCAL statement_timeout = {int(QUERY_TIMEOUT_MS)}")
+            cur = self._conn.execute(sql, params)
+            return cur.fetchall() if fetch else cur.rowcount
 
 
 def open_store(url: Optional[str]) -> Optional[ResultStore]:

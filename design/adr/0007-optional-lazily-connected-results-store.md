@@ -16,7 +16,7 @@ After finishing, a player should see how they did against the day's other player
 
 - **Postgres on Neon's free plan,** reached through its pooled connection string in `DATABASE_URL`. The driver is psycopg 3, imported only when a Postgres URL is used. Server-side prepared statements are off, as the pooler requires.
 - **Optional:** with no `DATABASE_URL`, results are off. Play is unaffected, `/results` returns 503 and the frontend hides the panel.
-- **Lazy:** the server never connects at startup, and `/health` never queries the database, so health checks don't keep Neon awake and a paused database can't stop a deploy. The first query connects and creates the table. A failed query reconnects and retries once.
+- **Lazy:** the server never connects at startup, and `/health` never queries the database, so health checks don't keep Neon awake and a paused database can't stop a deploy. The first query connects and creates the table. A failed query reconnects and retries once. Each Postgres query runs in its own short transaction with `SET LOCAL statement_timeout` (`QUERY_TIMEOUT_MS`, 5 s), so a stuck query can't hold the shared connection; `SET LOCAL` keeps the setting off pooled connections other clients use.
 - **One small table:** one row per `(puzzle, device_id)`, the first result wins (`ON CONFLICT DO NOTHING`). It holds solved or quit, the score the server computed, guesses, seconds, and clues and hints used. The device ID is a random UUID the browser makes, never anything personal.
 - **Only plays on the puzzle's own UTC day are stored.** A past puzzle is compared against its day's players but isn't added to them.
 - **Never fatal:** a database error during a guess or quit is logged and the play still succeeds.

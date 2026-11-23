@@ -30,7 +30,7 @@ Everything the server reads at runtime is committed in `data/`. The pipeline's i
 - **Guesses** (`backend/actions/`, `backend/utils/word_forms.py`): a guess is lowercased, a plural, verb form, comparative or British spelling is mapped to its base word, and anything not in the guess list (including every proper noun) is rejected.
 - **Help** (`backend/routes/help.py`, `backend/actions/hint.py`): `/clue` returns the next written clue, and `/hint` returns an everyday word ranked #6–10 (first hint) or #2–5 (second), always better than the player's best. It never reveals a form of the answer and avoids words on its stem ("stimulate" for "stimulus") unless nothing else is in range.
 - **Scoring** (`backend/scoring.py`): every rule and number is in one constants block at the top of the module.
-- **Results** (`backend/results.py`): an optional store, on Postgres or SQLite, with one row per device per puzzle. It connects on first use. See [ADR 0007](adr/0007-optional-lazily-connected-results-store.md).
+- **Results** (`backend/results.py`): an optional store, on Postgres or SQLite, with one row per device per puzzle. It connects on first use. Postgres queries time out after 5 s. See [ADR 0007](adr/0007-optional-lazily-connected-results-store.md).
 - **Routes:** one router per endpoint group in `backend/routes/`, with the request and response models in `backend/schemas.py`. See the [API reference](api.md).
 
 ## Frontend

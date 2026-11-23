@@ -1,5 +1,11 @@
+from contextlib import contextmanager
+from types import SimpleNamespace
+
+import pytest
+
 from backend.results import (
     MIN_PLAYERS,
+    QUERY_TIMEOUT_MS,
     PostgresResultStore,
     Result,
     Row,
@@ -39,6 +45,68 @@ def test_open_store_picks_the_backend():
     pg = open_store("postgresql://user:pw@host/db?sslmode=require")
     assert isinstance(pg, PostgresResultStore)
     assert pg._conn is None  # nothing connects until the first query
+
+
+class FakePgConnection:
+    """Stands in for a psycopg connection: records statements and transactions."""
+
+    def __init__(self, log, fail_on=None):
+        self.log = log
+        self.fail_on = fail_on
+        self.in_transaction = False
+
+    @contextmanager
+    def transaction(self):
+        self.in_transaction = True
+        self.log.append("BEGIN")
+        try:
+            yield
+        finally:
+            self.in_transaction = False
+            self.log.append("END")
+
+    def execute(self, sql, params=()):
+        self.log.append(("in tx: " if self.in_transaction else "") + sql.split()[0] + " " + sql.split()[1])
+        if self.fail_on and sql.startswith(self.fail_on):
+            raise RuntimeError("canceling statement due to statement timeout")
+        cursor = SimpleNamespace(rowcount=1, fetchall=lambda: [("device-aaaa", True, 80, 12)])
+        return cursor
+
+    def close(self):
+        self.log.append("CLOSE")
+
+
+def pg_store(log, fail_on=None):
+    store = PostgresResultStore("postgresql://user:pw@host/db")
+    store._connect = lambda: FakePgConnection(log, fail_on)
+    return store
+
+
+def test_postgres_queries_run_with_a_timeout():
+    log = []
+    store = pg_store(log)
+    assert store.record(1, "device-aaaa", result()) is True
+    assert store.day(1) == [Row("device-aaaa", True, 80, 12)]
+    timeout = "in tx: SET LOCAL"
+    # The table is created once, then each query gets its own transaction
+    # with the timeout set first.
+    assert log == [
+        "CREATE TABLE",
+        "BEGIN", timeout, "in tx: INSERT INTO", "END",
+        "BEGIN", timeout, "in tx: SELECT device_id,", "END",
+    ]
+    assert 0 < QUERY_TIMEOUT_MS <= 10_000
+
+
+def test_postgres_timeout_retries_once_then_raises():
+    log = []
+    store = pg_store(log, fail_on="SELECT")
+    with pytest.raises(RuntimeError, match="statement timeout"):
+        store.day(1)
+    # A timed-out query drops the connection and is tried once more on a new one.
+    assert log.count("CREATE TABLE") == 2
+    assert log.count("CLOSE") == 2
+    assert store._conn is None
 
 
 def test_device_ids():
