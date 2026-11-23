@@ -77,4 +77,4 @@ for f in docs/js/*.js; do node --check "$f"; done
 
 **Results (Neon).** Create a Neon project (the free plan is enough) and set `DATABASE_URL` on Render to its **pooled** connection string (`postgresql://...-pooler.../...?sslmode=require`). Never commit it. The `results` table is created on the first query. Without `DATABASE_URL`, everything else works and the comparison isn't shown.
 
-**Frontend (GitHub Pages).** In the repository settings, under Pages, deploy from the `main` branch and the `/docs` folder. Set `API_BASE_URL` in `docs/js/config.js` to the Render service URL, and make sure the Pages origin is listed in `CORS_ORIGINS` in `backend/config.py`.
+**Frontend (GitHub Pages).** In the repository settings, under Pages, deploy from the `main` branch and the `/docs` folder. Set `API_BASE_URL` in `docs/js/config.js` to the Render service URL (and the same URL in the CSP's `connect-src` in `docs/index.html`), and make sure the Pages origin is listed in `CORS_ORIGINS` in `backend/config.py`.

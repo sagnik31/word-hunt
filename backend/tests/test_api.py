@@ -33,6 +33,21 @@ def test_read_root(client):
     response = client.get("/")
     assert response.status_code == 200
     assert "/today" in response.json()["endpoints"]
+    assert response.json()["message"] == app.title == "Word Hunt API"
+
+
+def test_cors_allows_the_site_without_credentials(client):
+    # The game uses no cookies, so browsers aren't told to send them.
+    origin = "https://sagnik31.github.io"
+    response = client.options(
+        "/guess", headers={"Origin": origin, "Access-Control-Request-Method": "POST"}
+    )
+    assert response.headers["access-control-allow-origin"] == origin
+    assert "access-control-allow-credentials" not in response.headers
+    blocked = client.options(
+        "/guess", headers={"Origin": "https://example.com", "Access-Control-Request-Method": "POST"}
+    )
+    assert "access-control-allow-origin" not in blocked.headers
 
 
 def test_health_check(client):

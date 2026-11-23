@@ -85,7 +85,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Word Hot-Cold Game API",
+    title="Word Hunt API",
     version="2.0.0",
     description="Daily puzzle: rank a guessed word against the day's hidden word.",
     lifespan=lifespan,
@@ -94,7 +94,6 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
-    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -120,6 +119,6 @@ app.include_router(results.router)
 @app.get("/")
 def root():
     return {
-        "message": "Word Hot-Cold Game API",
+        "message": "Word Hunt API",
         "endpoints": ["/health", "/today", "/puzzle/{number}", "/guess", "/hint", "/clue", "/quit", "/results/{number}", "/docs"],
     }
