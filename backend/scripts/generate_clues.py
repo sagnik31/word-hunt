@@ -52,7 +52,7 @@ JSON on every try) is logged and left out of the report, so a rerun tries it
 again; after MAX_ERRORS_IN_A_ROW such words the run stops.
 
 A run never writes data/clues.json. After a human has skimmed the report,
---export-only writes the passing clues for the answer words, keyed by the
+--export-only writes every answer's full clue set, passed or not, keyed by the
 schedule codes so the public file doesn't say which clues belong to which
 word. That step needs the schedule key.
 
@@ -743,10 +743,15 @@ def export(results, path, schedule_path=SCHEDULE_PATH):
         return
     # Only answers: a report made with --words (a test set) must never leak in.
     others = sum(1 for w in results if w not in targets)
-    passed = {word_code(w, key): e["clues"] for w, e in sorted(results.items())
-              if e["passed"] and w in targets}
-    write_atomic(path, json.dumps(passed, ensure_ascii=False, indent=1) + "\n")
-    print(f"Wrote clues for {len(passed)} words to {path}"
+    # Every answer with a full set ships, passed or not (owner's call,
+    # 2026-11-23): a failed set is weaker or flawed, not missing, and the owner
+    # skims those first. Only a word whose models never finished is left out.
+    shipped = {w: e for w, e in sorted(results.items())
+               if w in targets and not e.get("error") and len(e.get("clues") or []) == 3}
+    failed = sum(1 for e in shipped.values() if not e["passed"])
+    clues = {word_code(w, key): e["clues"] for w, e in shipped.items()}
+    write_atomic(path, json.dumps(clues, ensure_ascii=False, indent=1) + "\n")
+    print(f"Wrote clues for {len(clues)} words to {path}, {failed} of them sets that failed a check"
           + (f" (left out {others} words that aren't answers)" if others else ""))
 
 
@@ -757,7 +762,7 @@ def main(argv=None):
     parser.add_argument("--words", type=Path, default=TARGETS_PATH,
                         help="word list to run on (default: the answers)")
     parser.add_argument("--export-only", action="store_true",
-                        help="write the passing answers' clues to the clues file, then stop")
+                        help="write every answer's clue set to the clues file, then stop")
     parser.add_argument("--summary", action="store_true", help="print counts only, then stop")
     parser.add_argument("--sample", type=int, default=0, help="random sample of N words")
     parser.add_argument("--seed", type=int, default=7)

@@ -96,6 +96,23 @@ def test_clue_length_matches_the_prompt(checker, length, ok):
     assert not long_problems if ok else long_problems
 
 
+
+def test_export_ships_failed_sets_but_not_words_that_never_finished(tmp_path, monkeypatch):
+    words = [WORD, "slowly", "gently"]
+    schedule = tmp_path / "schedule.txt"
+    schedule.write_text("\n".join(gc.word_code(w, "key") for w in words) + "\n", encoding="utf-8")
+    targets = tmp_path / "targets.txt"
+    targets.write_text("\n".join(words) + "\n", encoding="utf-8")
+    monkeypatch.setattr(gc, "TARGETS_PATH", targets)
+    monkeypatch.setattr(gc, "schedule_key", lambda: "key")
+    clues = tmp_path / "clues.json"
+    results = {WORD: {"passed": True, "clues": ["a", "b", "c"]},
+               "slowly": {"passed": False, "kinds": ["strong too weak"], "clues": ["d", "e", "f"]},
+               "gently": {"passed": False, "error": True, "kinds": ["error"], "clues": []}}
+    gc.export(results, clues, schedule)
+    written = json.loads(clues.read_text(encoding="utf-8"))
+    assert set(written) == {gc.word_code(WORD, "key"), gc.word_code("slowly", "key")}
+
 # The run loop, with a fake entry maker instead of the models.
 
 WORDS = ["slowly", "quickly", "gently"]
