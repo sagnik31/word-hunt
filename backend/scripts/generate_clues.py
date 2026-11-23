@@ -101,6 +101,9 @@ DEFAULT_REPORT = ROOT / "data" / "raw" / "clue_report.json"
 MAX_WORDS = 15  # per clue, as the writer's prompt says
 STRONG_MAX_RANK = 10  # "Boiling"
 OLLAMA_SEED = 7  # fixed sampling seed, so a rerun of the same prompt is comparable
+# --redo-failed adds the word's redo round to the seed: with the same seed a
+# retry repeats nearly the same tries and fails the same way.
+seed = OLLAMA_SEED
 # Context Ollama reserves per model. Its default is the model's maximum (262k
 # tokens for the writer, about 12 GB); our longest conversation is a few
 # thousand tokens, and a prompt that would not fit is an error, not a silent cut.
@@ -236,7 +239,7 @@ def chat(model, messages, schema, temperature, num_predict=200):
             "stream": False,
             "keep_alive": "30m",
             "options": {"temperature": temperature, "num_predict": num_predict,
-                        "seed": OLLAMA_SEED, "num_ctx": NUM_CTX},
+                        "seed": seed, "num_ctx": NUM_CTX},
         },
         timeout=300,
     )
@@ -775,9 +778,17 @@ def main(argv=None):
     familiar = familiar_words()
     redo = {w for w in words if w in results and not results[w]["passed"]} if args.redo_failed \
         else set()
+
+    def make(word):
+        global seed
+        rounds = results[word].get("round", 0) + 1 if word in redo else 0
+        seed = OLLAMA_SEED + rounds
+        entry = make_entry(checker, word, args.attempts, familiar)
+        entry["round"] = rounds
+        return entry
+
     try:
-        run(words, results, args.report, lambda w: make_entry(checker, w, args.attempts, familiar),
-            redo)
+        run(words, results, args.report, make, redo)
     except KeyboardInterrupt:
         print("\nStopped. Finished words are saved; rerun the same command to carry on.")
         sys.exit(130)

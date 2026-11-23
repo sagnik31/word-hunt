@@ -250,3 +250,26 @@ def test_chat_caps_the_context_and_refuses_a_prompt_that_would_not_fit(monkeypat
         with pytest.raises(RuntimeError):
             gc.chat("m", [], {}, 0.0)
     assert sent["options"]["num_ctx"] == gc.NUM_CTX
+
+
+def test_each_redo_round_uses_a_new_seed(tmp_path, monkeypatch):
+    words = tmp_path / "words.txt"
+    words.write_text("\n".join(WORDS) + "\n", encoding="utf-8")
+    report = tmp_path / "report.json"
+    seeds = []
+
+    def failing_entry(*args):
+        seeds.append(gc.seed)
+        return _entry(passed=False)
+    monkeypatch.setattr(gc, "WordGameEngine", lambda: None)
+    monkeypatch.setattr(gc, "Checker", lambda engine: None)
+    monkeypatch.setattr(gc, "familiar_words", set)
+    monkeypatch.setattr(gc, "make_entry", failing_entry)
+    monkeypatch.setattr(gc, "seed", gc.OLLAMA_SEED)
+    argv = ["--words", str(words), "--report", str(report)]
+    gc.main(argv)
+    gc.main(argv + ["--redo-failed"])
+    gc.main(argv + ["--redo-failed"])
+    n = len(WORDS)
+    assert seeds == [gc.OLLAMA_SEED] * n + [gc.OLLAMA_SEED + 1] * n + [gc.OLLAMA_SEED + 2] * n
+    assert {e["round"] for e in json.loads(report.read_text(encoding="utf-8")).values()} == {2}
