@@ -3,6 +3,8 @@
 
 <head>
   <meta charset="utf-8" />
+  <!-- connect-src must match API_BASE_URL in js/config.js (test_frontend_copies.py checks). -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src https://word-hunt-cevi.onrender.com; base-uri 'none'; form-action 'none'" />
   <title>Word Hot/Cold Game</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="styles.css" />
@@ -15,7 +17,7 @@
       <p>A new hidden word every day. We'll tell you how close you are.</p>
       <p class="puzzle-title" id="puzzle-title"></p>
       <p class="streak" id="streak"></p>
-      <p class="status" id="status">Checking server status…</p>
+      <p class="status" id="status" role="status">Checking server status…</p>
       <nav class="nav-row">
         <button type="button" id="today-button" class="nav-button">Today's puzzle</button>
         <button type="button" id="archive-button" class="nav-button">Past puzzles</button>
@@ -49,6 +51,9 @@
           <p class="start-note">The clock starts when you press Play and keeps running until you solve or quit.</p>
         </section>
 
+        <!-- Read out by screen readers: each guess, clue, hint and result. -->
+        <p id="announce" class="sr-only" role="status" aria-atomic="true"></p>
+
         <p id="clock" class="clock hidden"></p>
 
         <form id="guess-form" autocomplete="off">
@@ -75,7 +80,7 @@
               Hint
             </button>
           </div>
-          <p id="help-note" class="clue-note"></p>
+          <p id="help-note" class="clue-note" aria-live="polite"></p>
 
           <!-- Row 3: Quit centered -->
           <div class="quit-row">
@@ -95,7 +100,7 @@
           <p id="result-text"></p>
           <p id="score-text" class="score-text"></p>
           <div id="standing" class="standing hidden">
-            <p id="standing-beat" class="standing-beat"></p>
+            <p id="standing-beat" class="standing-beat" aria-live="polite"></p>
             <p id="standing-rate" class="standing-rate"></p>
             <div id="standing-chart" class="chart hidden">
               <p class="chart-title">Guesses solvers took</p>

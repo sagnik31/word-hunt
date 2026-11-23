@@ -41,6 +41,8 @@ export const CONFIG = {
 };
 ```
 
+The page's content security policy (the `<meta http-equiv="Content-Security-Policy">` tag in `index.html`) only lets it call the deployed backend, so in the copy also change `connect-src` to `http://localhost:8000`. Otherwise the browser blocks every call and the console shows a CSP error. A test checks that the committed `connect-src` matches `config.js`.
+
 ES modules can't be loaded from `file://` URLs, so serve the copy over HTTP:
 
 ```bash

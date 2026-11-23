@@ -46,7 +46,7 @@ Each of these is relied on by players or guarded by a test. Don't change one wit
 - **Never reveal an answer** in committed files, logs, test fixtures that use the real schedule, or the README. Use example words that aren't in `data/target_words.txt`, and check with `grep -x word data/target_words.txt`.
 - The schedule key (`WORDHUNT_SCHEDULE_KEY` or the git-ignored `schedule.key`) and `DATABASE_URL` are secrets. Never commit, print or log them.
 - `data/raw/` is git-ignored because its reports name answers. Keep anything that names answers there.
-- Never commit a localhost URL in `docs/js/config.js`. For local play, copy `docs/` elsewhere and edit the copy.
+- Never commit a localhost URL in `docs/js/config.js`. For local play, copy `docs/` elsewhere and edit the copy: `config.js` and the CSP's `connect-src` in `index.html`.
 
 ## Working locally without spoilers
 

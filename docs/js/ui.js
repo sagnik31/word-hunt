@@ -157,6 +157,7 @@ export class GameUI {
         this.inputEl = $("guess-input");
         this.resultSection = $("result");
         this.resultText = $("result-text");
+        this.announceEl = $("announce"); // hidden, read out by screen readers
         this.scoreText = $("score-text");
         this.nextPuzzleEl = $("next-puzzle");
         this.playPastButton = $("play-past-button");
@@ -422,6 +423,12 @@ export class GameUI {
         this.resultText.textContent = text;
         this.resultText.className = className;
         this.scoreText.textContent = "";
+        this.announceEl.textContent = text;
+    }
+
+    showScore(score) {
+        this.scoreText.textContent = `Final score: ${score} points`;
+        this.announceEl.textContent = `${this.resultText.textContent} ${this.scoreText.textContent}.`;
     }
 
     renderResult(result) {
@@ -435,7 +442,7 @@ export class GameUI {
                 "result-text-success",
             );
             if (typeof result.score === "number") {
-                this.scoreText.textContent = `Final score: ${result.score} points`;
+                this.showScore(result.score);
             }
             return;
         }
@@ -449,7 +456,7 @@ export class GameUI {
     renderQuit(data) {
         this.showResultLine(`🚪 You quit. The answer was "${data.answer}".`, "result-text-error");
         if (typeof data.score === "number") {
-            this.scoreText.textContent = `Final score: ${data.score} points`;
+            this.showScore(data.score);
         }
     }
 
