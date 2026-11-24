@@ -23,7 +23,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - run: pip install -r requirements-dev.txt ruff
+      - run: pip install -r requirements-dev.txt
       - run: python -m pytest -q
       - run: ruff check backend
       - run: for f in docs/js/*.js; do node --check "$f"; done

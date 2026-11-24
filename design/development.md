@@ -6,7 +6,6 @@ The README's quick start gets the backend running. This page has the rest: playi
 
 - Python 3.11 or newer (developed and pinned on 3.13)
 - Git, and Node.js 22 or newer for the frontend tests and syntax check
-- ruff for the lint check (`pip install ruff`; it isn't in `requirements-dev.txt`)
 
 The generated data files are committed, so you don't need GloVe or the ratings dataset to run the game. The git history still contains an old 90 MB data file, which makes the clone fairly large.
 
@@ -64,6 +63,7 @@ for f in docs/js/*.js; do node --check "$f"; done
 
 - Use `python -m pytest` rather than `pytest`, so the repository root is on the import path.
 - The tests build their own schedule and use an in-memory SQLite results store, so they need neither the key nor a database. They also check the generated word lists (for example, that no proper noun appears, hint words included), that the shipped `data/clues.json` is complete and shares no code with the schedule (checked without the key, reporting counts only so a failure never prints a clue), and that the help costs shown in the frontend and the README match `backend/scoring.py`. The saves and the request handling in `docs/js/` are tested by running `backend/tests/frontend.test.mjs` with Node (skipped without it). The clue-generator tests cover each clue rule: all three clues, no giveaway forms, no talk of letters or sounds, no names, and the length limit.
+- pytest, httpx and ruff are pinned in `requirements-dev.txt`, so CI and a local run use the same versions.
 - `node --check` checks only its first argument, so run it once per file.
 - GitHub Actions runs the same three checks on every push to `main` and every pull request ([`.github/workflows/checks.yml`](../.github/workflows/checks.yml)). The clue-generator tests and the word-form name check are skipped there, because they need WordNet.
 

@@ -1,3 +1,6 @@
+# Pinned so CI runs what was tested locally: a newer ruff or pytest can fail
+# on unchanged code.
 -r requirements.txt
-pytest
-httpx
+pytest==9.0.1
+httpx==0.28.1
+ruff==0.14.7

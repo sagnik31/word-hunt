@@ -17,14 +17,14 @@ Word Hunt is a daily semantic guessing game. Each UTC day has one secret noun. P
 Run everything from the repository root.
 
 ```bash
-pip install -r requirements-dev.txt               # server + test deps
+pip install -r requirements-dev.txt               # server, test and lint deps
 uvicorn backend.api:app --reload --port 8000      # run the API (docs at /docs)
 python -m pytest                                  # tests (not bare `pytest`)
 ruff check backend                                # lint
 for f in docs/js/*.js; do node --check "$f"; done # frontend syntax, one file per call
 ```
 
-All three checks must pass before a change is done. CI (`.github/workflows/checks.yml`) runs the same on every push. ruff isn't in `requirements-dev.txt`: `pip install ruff`. The pipeline scripts need `requirements-scripts.txt`, WordNet and inputs that aren't committed; see [the data pipeline](design/data-pipeline.md).
+All three checks must pass before a change is done. CI (`.github/workflows/checks.yml`) runs the same on every push. The pipeline scripts need `requirements-scripts.txt`, WordNet and inputs that aren't committed; see [the data pipeline](design/data-pipeline.md).
 
 ## Rules that must not break
 

@@ -299,7 +299,7 @@ def test_a_bad_device_id_never_blocks_play(client, fresh_results, device_id):
 
 def test_the_archive_stays_open_when_the_schedule_runs_out(client, monkeypatch):
     # Three puzzles, launched a week ago.
-    monkeypatch.setattr(app.state, "schedule", DailySchedule(WORDS, today_utc() - timedelta(days=7)))
+    monkeypatch.setitem(app.state._state, "schedule", DailySchedule(WORDS, today_utc() - timedelta(days=7)))
     data = client.get("/today").json()
     assert data["puzzle"] is None
     assert data["latest"] == len(WORDS)
@@ -307,7 +307,7 @@ def test_the_archive_stays_open_when_the_schedule_runs_out(client, monkeypatch):
 
 
 def test_today_is_503_before_launch(client, monkeypatch):
-    monkeypatch.setattr(app.state, "schedule", DailySchedule(WORDS, today_utc() + timedelta(days=1)))
+    monkeypatch.setitem(app.state._state, "schedule", DailySchedule(WORDS, today_utc() + timedelta(days=1)))
     assert client.get("/today").status_code == 503
 
 
