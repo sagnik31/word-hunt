@@ -9,8 +9,8 @@ The backend runs on a free tier and sleeps when idle, so the first visit after a
 ## How to play
 
 - Press **Play** to start the clock, then guess any common English word. Each guess shows its rank (the answer is #1) and a temperature, from Boiling (#2–10) down to Freezing (worse than #1,000).
-- Plurals, verb forms, comparatives ("bigger") and British spellings ("colour") count as their base word, and repeats don't count as new guesses. Proper nouns (names, places, brands, days, months) are never accepted.
-- Stuck? Unlock up to three written **Clues**, from a broad category to close to a definition, then two **Hints**, which reveal a real word near the answer. The first help unlocks after 10 guesses, and each one after that needs 5 guesses in a row without a new best.
+- Most plurals, verb forms, comparatives ("bigger") and British spellings ("colour") count as their base word, and repeats don't count as new guesses. Proper nouns (names, places, brands, days, months) are never accepted.
+- Stuck? Unlock up to three written **Clues**, from a broad category to close to a definition, then two **Hints**, which reveal a real word near the answer. The first help needs at least 10 guesses, and every one needs 5 guesses in a row without a new best.
 - **Quit** at any time to reveal the answer for partial credit.
 - Solve each day's puzzle on its day to build a **streak**, and play earlier days from **Past puzzles**.
 - When you finish, you see how you did against the day's other players.
@@ -36,7 +36,7 @@ Runtime:  data/ ──► FastAPI backend (Render) ◄── REST ──► stat
 
 ## Quick start
 
-Requires Python 3.10+ (pinned on 3.13). The generated data is committed, so no large downloads are needed.
+Requires Python 3.11+ (pinned on 3.13). The generated data is committed, so no large downloads are needed.
 
 ```bash
 git clone https://github.com/sagnik31/word-hunt.git
@@ -52,6 +52,8 @@ python backend/scripts/build_schedule.py --new-key
 uvicorn backend.api:app --reload --port 8000   # API docs at http://localhost:8000/docs
 python -m pytest                               # tests
 ```
+
+The committed clues belong to the project's own key, so with yours there are none and the game goes straight to Hints.
 
 To play locally, serve a copy of `docs/` pointed at your backend; see [Development and deployment](design/development.md).
 

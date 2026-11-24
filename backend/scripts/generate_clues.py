@@ -52,9 +52,9 @@ JSON on every try) is logged and left out of the report, so a rerun tries it
 again; after MAX_ERRORS_IN_A_ROW such words the run stops.
 
 A run never writes data/clues.json. After a human has skimmed the report,
---export-only writes every answer's full clue set, passed or not, keyed by the
-schedule codes so the public file doesn't say which clues belong to which
-word. That step needs the schedule key.
+--export-only writes every answer's full clue set, passed or not, keyed by
+clue codes, which differ from the schedule's so nobody can tell which day a
+set of clues is for. That step needs the schedule key.
 
     python backend/scripts/generate_clues.py                                # all answers
     python backend/scripts/generate_clues.py --words <file> --report <file> # other words
@@ -65,7 +65,6 @@ word. That step needs the schedule key.
 import argparse
 import csv
 import json
-import os
 import random
 import re
 import sys
@@ -82,13 +81,14 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from backend.config import CLUES_PATH, SCHEDULE_PATH, schedule_key  # noqa: E402
-from backend.daily import decode, read_codes, word_code  # noqa: E402
+from backend.daily import clue_code, decode, read_codes  # noqa: E402
 from backend.game import WordGameEngine  # noqa: E402
 from backend.scripts.build_word_lists import (  # noqa: E402
     PROPER_NOUNS_PATH,
     is_proper_noun,
     read_blocklist,
 )
+from backend.utils.files import write_atomic  # noqa: E402
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
 WRITER_MODEL = "qwen3.5:4b"
@@ -96,6 +96,7 @@ SOLVER_MODEL = "gemma4:e2b"
 CHECKER_MODEL = "gemma4:e2b"
 
 TARGETS_PATH = ROOT / "data" / "target_words.txt"
+GUESS_PATH = ROOT / "data" / "guess_words.txt"
 DEFAULT_REPORT = ROOT / "data" / "raw" / "clue_report.json"
 
 MAX_WORDS = 15  # per clue, as the writer's prompt says
@@ -247,11 +248,20 @@ def chat(model, messages, schema, temperature, num_predict=200):
     body = response.json()
     if body.get("prompt_eval_count", 0) + num_predict >= NUM_CTX:
         raise RuntimeError(f"The prompt nearly fills the {NUM_CTX}-token context.")
-    return json.loads(body["message"]["content"])
+    reply = json.loads(body["message"]["content"])
+    if not isinstance(reply, dict):
+        raise ValueError("The model's reply isn't an object.")
+    return reply
 
 
 def ask(model, prompt, schema, temperature=0.0):
     return chat(model, [{"role": "user", "content": prompt}], schema, temperature)
+
+
+def text_field(reply, field):
+    """A text field of a model's reply; "" when it's missing or not text."""
+    value = reply.get(field)
+    return value.strip() if isinstance(value, str) else ""
 
 
 def bag_vector(engine, words, skip):
@@ -417,8 +427,8 @@ class Checker:
             prompt = MEDIUM_FACT_PROMPT if name == "medium" else FACT_PROMPT
             answer = ask(CHECKER_MODEL, prompt.format(word=word, meaning=meaning, clue=clue),
                          FACT_SCHEMA)
-            if not answer.get("correct", False):
-                wrong.append((name, answer.get("reason", "")))
+            if answer.get("correct") is not True:
+                wrong.append((name, text_field(answer, "reason")))
         return wrong
 
     def rank_of(self, word, guess):
@@ -437,7 +447,8 @@ class Checker:
         for shown in range(1, 4):
             listed = "\n".join(f"{i}. {c}" for i, c in enumerate(clues[:shown], start=1))
             guesses = ask(SOLVER_MODEL, SOLVER_PROMPT.format(clues=listed), GUESSES_SCHEMA)
-            guesses = [g for g in guesses.get("guesses", []) if isinstance(g, str)]
+            guesses = guesses.get("guesses")
+            guesses = [g for g in guesses if isinstance(g, str)] if isinstance(guesses, list) else []
             guesses_seen.append(guesses)
             ranks.append(self.best_rank(word, guesses))
         return ranks, guesses_seen
@@ -505,8 +516,8 @@ def check(checker, word, sense, written, vague=None):
     vague is the WordNet category clue, or None when the writer wrote one.
     kinds names the FAILURE_KINDS found, so the report can be counted.
     """
-    clues = [vague or str(written.get("vague", "")).strip(),
-             str(written.get("medium", "")).strip(), str(written.get("strong", "")).strip()]
+    clues = [vague or text_field(written, "vague"),
+             text_field(written, "medium"), text_field(written, "strong")]
     problems = checker.rule_problems(word, clues)
     if problems:
         return clues, problems, ["rules"], [], []
@@ -615,25 +626,6 @@ def load_words(sample, seed, path=TARGETS_PATH):
     return words
 
 
-def write_atomic(path, text):
-    """Write text so that a crash or Ctrl+C at any moment leaves either the
-    old file or the new one, never half of either."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    with tmp.open("w", encoding="utf-8") as f:
-        f.write(text)
-        f.flush()
-        os.fsync(f.fileno())
-    for wait in (0.1, 0.5, 2.0, None):
-        try:
-            tmp.replace(path)
-            return
-        except PermissionError:  # Windows: another program has the file open
-            if wait is None:
-                raise
-            time.sleep(wait)
-
-
 def save(path, results):
     write_atomic(path, json.dumps(results, ensure_ascii=False, indent=2))
 
@@ -738,20 +730,34 @@ def export(results, path, schedule_path=SCHEDULE_PATH):
     # With the wrong key every code is wrong, and the server would quietly
     # find no clues for any puzzle. The right key decodes the schedule.
     targets = set(read_words(TARGETS_PATH))
-    if not any(decode(read_codes(schedule_path), key, targets | set(results))):
+    codes = read_codes(schedule_path)
+    scheduled = decode(codes, key, targets | set(results) | set(read_words(GUESS_PATH)))
+    if not any(scheduled):
         print(f"The schedule key doesn't decode {schedule_path.name} (wrong key?): clues.json not written")
         return
     # Only answers: a report made with --words (a test set) must never leak in.
-    others = sum(1 for w in results if w not in targets)
+    # A scheduled word counts even if it has since left the answer list.
+    answers = targets | {w for w in scheduled if w}
+    others = sum(1 for w in results if w not in answers)
     # Every answer with a full set ships, passed or not (owner's call,
     # 2026-11-23): a failed set is weaker or flawed, not missing, and the owner
     # skims those first. Only a word whose models never finished is left out.
     shipped = {w: e for w, e in sorted(results.items())
-               if w in targets and not e.get("error") and len(e.get("clues") or []) == 3}
+               if w in answers and not e.get("error") and len(e.get("clues") or []) == 3}
     failed = sum(1 for e in shipped.values() if not e["passed"])
-    clues = {word_code(w, key): e["clues"] for w, e in shipped.items()}
-    write_atomic(path, json.dumps(clues, ensure_ascii=False, indent=1) + "\n")
+    if not shipped:
+        print("The report has no finished clue sets (wrong path?): clues.json not written")
+        return
+    clues = {clue_code(w, key): e["clues"] for w, e in shipped.items()}
+    # A scheduled puzzle never loses the clues it already has.
+    published = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    live = [clue_code(w, key) for w in scheduled if w]
+    kept = {c: published[c] for c in live if c in published and c not in clues}
+    clues.update(kept)
+    # Sorted by code: in word order, the codes would match the public answer list.
+    write_atomic(path, json.dumps(clues, ensure_ascii=False, indent=1, sort_keys=True) + "\n")
     print(f"Wrote clues for {len(clues)} words to {path}, {failed} of them sets that failed a check"
+          + (f", {len(kept)} kept from before" if kept else "")
           + (f" (left out {others} words that aren't answers)" if others else ""))
 
 

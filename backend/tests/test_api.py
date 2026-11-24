@@ -4,7 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.api import app
-from backend.daily import DailySchedule, today_utc
+from backend.daily import DailySchedule, schedule_code, today_utc
 from backend.results import MIN_PLAYERS, Result, SQLiteResultStore
 
 # Yesterday's puzzle (#1) is "piano", today's (#2) is "apple", #3 is tomorrow.
@@ -181,7 +181,12 @@ def test_a_solve_on_its_day_is_stored_once(client, fresh_results):
     body = {"puzzle": 2, "word": "apple", "stats": WIN_STATS, "device_id": ME}
     assert client.post("/guess", json=body).json()["score"] == 100
     # A second solve from the same device (another tab, say) doesn't count.
-    client.post("/guess", json={**body, "stats": {**WIN_STATS, "elapsed_seconds": 3000}})
+    # It shows the first score, which is the one compared with other players.
+    again = client.post("/guess", json={**body, "stats": {**WIN_STATS, "elapsed_seconds": 3000}})
+    assert again.json()["score"] == 100
+    # A quit afterwards doesn't get the solve's score.
+    late = client.post("/quit", json={"puzzle": 2, "stats": {"guess_count": 3}, "device_id": ME})
+    assert late.json()["score"] <= 20
     [row] = fresh_results.day(2)
     assert (row.solved, row.score, row.guesses) == (True, 100, 8)
 
@@ -281,3 +286,44 @@ def test_counts_too_big_for_the_results_table_are_refused(client):
 
 def test_a_very_long_word_is_refused(client):
     assert client.post("/guess", json={"puzzle": 2, "word": "a" * 1000}).status_code == 422
+
+
+@pytest.mark.parametrize("device_id", [None, "", "short", "a" * 101, 5, ["x"], "has a space in it"])
+def test_a_bad_device_id_never_blocks_play(client, fresh_results, device_id):
+    body = {"puzzle": 2, "word": "apple", "stats": {}, "device_id": device_id}
+    assert client.post("/guess", json=body).json()["is_correct"] is True
+    assert client.post("/quit", json={"puzzle": 2, "stats": {}, "device_id": device_id}).status_code == 200
+    assert client.get("/results/2", params={"device_id": str(device_id)}).status_code == 200
+    assert fresh_results.day(2) == []
+
+
+def test_the_archive_stays_open_when_the_schedule_runs_out(client, monkeypatch):
+    # Three puzzles, launched a week ago.
+    monkeypatch.setattr(app.state, "schedule", DailySchedule(WORDS, today_utc() - timedelta(days=7)))
+    data = client.get("/today").json()
+    assert data["puzzle"] is None
+    assert data["latest"] == len(WORDS)
+    assert client.get("/puzzle/3").status_code == 200
+
+
+def test_today_is_503_before_launch(client, monkeypatch):
+    monkeypatch.setattr(app.state, "schedule", DailySchedule(WORDS, today_utc() + timedelta(days=1)))
+    assert client.get("/today").status_code == 503
+
+
+@pytest.mark.parametrize("bad_lines, status", [(0, 200), (1, 503), (2, 503)])
+def test_health_fails_when_the_schedule_doesnt_decode(tmp_path, monkeypatch, bad_lines, status):
+    codes = [schedule_code("piano", "some-test-key")] * (2 - bad_lines) + ["0" * 20] * bad_lines
+    path = tmp_path / "schedule.txt"
+    path.write_text("\n".join(codes) + "\n", encoding="utf-8")
+    monkeypatch.setattr("backend.api.SCHEDULE_PATH", path)
+    monkeypatch.setattr("backend.api.CLUES_PATH", tmp_path / "none.json")
+    monkeypatch.setattr("backend.api.schedule_key", lambda: "some-test-key")
+    monkeypatch.setattr("backend.api.database_url", lambda: None)
+    # The lifespan runs on the shared app: put its state back afterwards.
+    state = dict(app.state._state)
+    try:
+        with TestClient(app) as c:
+            assert c.get("/health").status_code == status
+    finally:
+        app.state._state.update(state)

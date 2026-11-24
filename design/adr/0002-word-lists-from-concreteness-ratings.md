@@ -21,7 +21,7 @@ Earlier versions used ad-hoc noun lists from different sources, which disagreed 
   - **Guesses:** every single word in the dataset that has a GloVe vector and isn't a proper noun (~31,000).
   - **Answers:** nouns known by ≥ 95% of raters, concreteness ≥ 4.0 and subtitle frequency ≥ 50, minus plurals and a hand-edited blocklist (~2,500).
   - **Hints:** known by ≥ 95% of raters, subtitle frequency ≥ 10 and not an inflected form (~16,700).
-  - **Word forms:** ~24,000 forms that aren't guess words themselves, each mapped to a base word, so a plural of the answer wins: plurals and verb forms, irregular forms from WordNet, comparatives, and British spellings (added 2026-11-20). A separate list of irregular plurals lets those win too when they're guess words of their own.
+  - **Word forms:** ~24,000 forms that aren't guess words or names themselves, each mapped to a base word, so a plural of the answer wins: plurals and verb forms, irregular forms from WordNet, comparatives, and British spellings (added 2026-11-20). A separate list of irregular plurals lets those win too when they're guess words of their own.
 - **Proper nouns:** a word is excluded when WordNet only knows it with a capital letter, or when it's listed in `data/proper_nouns.txt`. A short allowlist in the script keeps ordinary words WordNet happens to capitalise. A test checks the generated lists.
 - **Generated offline, committed:** the lists are plain text in `data/`, so the server and the tests don't need the dataset, WordNet or GloVe.
 
@@ -35,5 +35,6 @@ Earlier versions used ad-hoc noun lists from different sources, which disagreed 
 
 - Changing which words can be the answer is a matter of editing `data/target_blocklist.txt` or a threshold and rerunning the script (then the schedule script).
 - The proper-noun rule depends on WordNet's coverage. Brands and characters WordNet doesn't know have to be added to `data/proper_nouns.txt` by hand when they slip through.
+- Forms the dataset lists as words of their own (about 1,400, such as "stood") keep their own rank instead of counting as their base word. Merging them was considered and rejected (2026-11-24): many have drifted from the base in meaning, so the base's rank would mislead.
 - Some words with a real lowercase meaning that is also a name (the word for plates that is also a country) are kept on purpose.
 - The dataset's authors haven't stated licence terms, and the CSV is not committed: anyone rebuilding the lists downloads it themselves.

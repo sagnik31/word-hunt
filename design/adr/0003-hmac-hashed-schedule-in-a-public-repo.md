@@ -1,7 +1,7 @@
 # ADR 0003: Keep the daily schedule secret in a public repository with HMAC codes
 
 - **Status:** Accepted
-- **Date:** 2026-11-08
+- **Date:** 2026-11-08 (separate clue codes 2026-11-24)
 
 ## Context
 
@@ -9,10 +9,10 @@ Every player gets the same secret word each UTC day. The repository is public, a
 
 ## Decision
 
-- **Codes, not words.** `data/daily_schedule.txt` has one line per puzzle, and each line is the first 20 hex characters of `HMAC-SHA256(key, word)`. Line N is puzzle #N, and puzzle #1 is `LAUNCH_DATE` in `backend/config.py`.
+- **Codes, not words.** `data/daily_schedule.txt` has one line per puzzle, and each line is the first 20 hex characters of `HMAC-SHA256(key, "schedule:" + word)`. Line N is puzzle #N, and puzzle #1 is `LAUNCH_DATE` in `backend/config.py`.
 - **The key is the only secret.** It comes from the `WORDHUNT_SCHEDULE_KEY` environment variable (in production) or a git-ignored `schedule.key` file (locally).
-- **Decoding at startup.** The server hashes every candidate answer with the key and matches the codes, so it knows each day's word without the word ever being written to disk in the repo.
-- **Clues use the same codes.** `data/clues.json` is keyed by schedule code, so the public file doesn't say which clues belong to which word.
+- **Decoding at startup.** The server hashes every guess word with the key and matches the codes, so it knows each day's word without the word ever being written to disk in the repo. If any line doesn't decode, `/health` reports `degraded`, so a bad key or schedule fails the deploy instead of a puzzle on its day.
+- **Clues use different codes.** `data/clues.json` is keyed by `HMAC-SHA256(key, word)` and sorted by that code. The clues give their word away, so nothing may link them to a schedule line: a shared code would reveal each word's day, and a file in word order would match its codes to the public answer list.
 - **Append-only schedule.** `backend/scripts/build_schedule.py` never changes today's or earlier lines. It drops future words that are no longer answers and appends new ones, and no word repeats.
 - **Unreleased puzzles are refused.** Every request names a puzzle number, and the server returns 404 for one after today's.
 
@@ -29,4 +29,6 @@ Every player gets the same secret word each UTC day. The repository is public, a
 - The tests and CI never see the real key. They build their own throwaway schedule.
 - Changing `LAUNCH_DATE` or deleting the schedule file would change puzzles people have already played, so both are treated as one-off relaunch decisions. This has happened once: on 2026-11-23 the game started again at puzzle #1 with the hand-picked answers ([ADR 0009](0009-hand-picked-answer-list.md)), with a fresh schedule built under the same key so the clues still match.
 - The hashes hide words only from people without the key. Since the vocabulary is public and small, the key must be long and random, not a guessable phrase.
+- The answers are public as an unordered list, and the clues can be matched to them. What the codes hide is which answer comes on which day.
+- Until 2026-11-24 the schedule and the clues shared codes and `clues.json` was in word order, so anyone could work out the order. The codes were separated and, because the old files stay in the git history, every puzzle after #5 was reshuffled. #3 to #5 kept their words, to leave time for the deploy, so their days can still be worked out from the history.
 - Anything that would reveal an answer (a decoded schedule, a clue report naming words, a startup log line) stays out of committed files and logs.

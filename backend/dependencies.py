@@ -45,16 +45,22 @@ def save_result(
     puzzle: int,
     device_id: Optional[str],
     result: Result,
-) -> None:
+) -> int:
     """Store a finished play, if it was finished on the puzzle's own day.
+
+    Returns the score to show. A device's first result is the one kept, so
+    sending a finish again (its reply was lost, say) gives the first score.
 
     Archive plays aren't stored. A database error is logged, not raised: the
     player's guess or quit still goes through.
     """
     if store is None or not valid_device_id(device_id) or puzzle != schedule.current():
-        return
+        return result.score
     try:
-        store.record(puzzle, device_id, result)
+        if not store.record(puzzle, device_id, result):
+            first = store.score_of(puzzle, device_id, result.solved)
+            return result.score if first is None else first
     except Exception as e:
         print(f"[results] Could not store a result: {e}")
         traceback.print_exc()
+    return result.score

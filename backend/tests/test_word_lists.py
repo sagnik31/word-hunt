@@ -1,5 +1,7 @@
 """Checks on the generated word lists (see backend/scripts/build_word_lists.py)."""
 
+import pytest
+
 from backend.config import DATA_DIR
 
 # Hard requirement: proper nouns can never be guessed or be the answer.
@@ -99,9 +101,9 @@ def test_hint_words_are_clean_guess_words_with_no_proper_nouns():
     assert "skidded" not in hints and {"fishing", "glasses"} <= set(hints)
 
 
-def test_shipped_clues_match_the_schedule():
-    # Checked without the key, so no answer is decoded: every clue set belongs
-    # to a scheduled puzzle and has three short clues.
+def test_shipped_clues_are_complete_and_give_no_day_away():
+    # Checked without the key, so no answer is decoded: one set of three short
+    # clues per puzzle, under codes the schedule doesn't use, in code order.
     import json
     import re
 
@@ -109,7 +111,9 @@ def test_shipped_clues_match_the_schedule():
     codes = {line.strip() for line in _words("daily_schedule.txt") if line.strip() and not line.startswith("#")}
     word = re.compile(r"[A-Za-z][A-Za-z'-]*")
     # Counts only: a failure must never print a clue (it would spoil a puzzle).
-    stray = len(set(clues) - codes)
+    assert len(clues) == len(codes)
+    shared = len(set(clues) & codes)
+    unsorted = sum(a > b for a, b in zip(clues, list(clues)[1:]))
     malformed = sum(
         not (isinstance(v, list) and len(v) == 3 and all(isinstance(c, str) and c.strip() for c in v))
         for v in clues.values()
@@ -118,4 +122,22 @@ def test_shipped_clues_match_the_schedule():
         len(word.findall(c)) > 15  # MAX_WORDS in generate_clues.py
         for v in clues.values() if isinstance(v, list) for c in v if isinstance(c, str)
     )
-    assert (stray, malformed, too_long) == (0, 0, 0)
+    assert (shared, unsorted, malformed, too_long) == (0, 0, 0, 0)
+
+
+def test_word_forms_hold_no_names():
+    forms = _forms()
+    names = {"dorking", "golding", "harding", "lessing", "maritimes", "ming", "redding", "rockies", "rogers"}
+    assert not names & set(forms)
+
+
+def test_word_forms_pass_the_builders_own_name_check():
+    # Needs WordNet, so it's skipped in CI.
+    pytest.importorskip("nltk")
+    from backend.scripts.build_word_lists import is_proper_noun
+
+    try:
+        is_proper_noun("apple")
+    except LookupError:
+        pytest.skip("WordNet data isn't installed")
+    assert sum(is_proper_noun(form) for form in _forms()) == 0

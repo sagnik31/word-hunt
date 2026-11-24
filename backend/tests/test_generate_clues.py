@@ -7,6 +7,7 @@ import pytest
 pytest.importorskip("nltk")
 pytest.importorskip("requests")
 
+from backend.daily import schedule_code  # noqa: E402
 from backend.game import WordGameEngine  # noqa: E402
 from backend.scripts import generate_clues as gc  # noqa: E402
 
@@ -57,7 +58,7 @@ def test_a_checker_error_doesnt_stop_the_run(checker, monkeypatch):
 
 def test_export_refuses_a_key_that_doesnt_decode_the_schedule(tmp_path, monkeypatch):
     schedule = tmp_path / "schedule.txt"
-    schedule.write_text(gc.word_code(WORD, "right key") + "\n", encoding="utf-8")
+    schedule.write_text(schedule_code(WORD, "right key") + "\n", encoding="utf-8")
     clues = tmp_path / "clues.json"
     targets = tmp_path / "targets.txt"
     targets.write_text(WORD + "\n", encoding="utf-8")
@@ -70,12 +71,12 @@ def test_export_refuses_a_key_that_doesnt_decode_the_schedule(tmp_path, monkeypa
 
     monkeypatch.setattr(gc, "schedule_key", lambda: "right key")
     gc.export(results, clues, schedule)
-    assert gc.json.loads(clues.read_text(encoding="utf-8")) == {gc.word_code(WORD, "right key"): ["a", "b", "c"]}
+    assert gc.json.loads(clues.read_text(encoding="utf-8")) == {gc.clue_code(WORD, "right key"): ["a", "b", "c"]}
 
 
 def test_export_leaves_out_words_that_arent_answers(tmp_path, monkeypatch):
     schedule = tmp_path / "schedule.txt"
-    schedule.write_text(gc.word_code(WORD, "key") + "\n", encoding="utf-8")
+    schedule.write_text(schedule_code(WORD, "key") + "\n", encoding="utf-8")
     targets = tmp_path / "targets.txt"
     targets.write_text(WORD + "\n", encoding="utf-8")
     monkeypatch.setattr(gc, "TARGETS_PATH", targets)
@@ -84,7 +85,7 @@ def test_export_leaves_out_words_that_arent_answers(tmp_path, monkeypatch):
     results = {WORD: {"passed": True, "clues": ["a", "b", "c"]},
                "slowly": {"passed": True, "clues": ["d", "e", "f"]}}
     gc.export(results, clues, schedule)
-    assert list(json.loads(clues.read_text(encoding="utf-8"))) == [gc.word_code(WORD, "key")]
+    assert list(json.loads(clues.read_text(encoding="utf-8"))) == [gc.clue_code(WORD, "key")]
 
 
 def _problems(checker, word, vague, medium="A tool for making music.", strong="Played with a bow."):
@@ -155,7 +156,7 @@ def test_clue_length_matches_the_prompt(checker, length, ok):
 def test_export_ships_failed_sets_but_not_words_that_never_finished(tmp_path, monkeypatch):
     words = [WORD, "slowly", "gently"]
     schedule = tmp_path / "schedule.txt"
-    schedule.write_text("\n".join(gc.word_code(w, "key") for w in words) + "\n", encoding="utf-8")
+    schedule.write_text("\n".join(schedule_code(w, "key") for w in words) + "\n", encoding="utf-8")
     targets = tmp_path / "targets.txt"
     targets.write_text("\n".join(words) + "\n", encoding="utf-8")
     monkeypatch.setattr(gc, "TARGETS_PATH", targets)
@@ -166,7 +167,7 @@ def test_export_ships_failed_sets_but_not_words_that_never_finished(tmp_path, mo
                "gently": {"passed": False, "error": True, "kinds": ["error"], "clues": []}}
     gc.export(results, clues, schedule)
     written = json.loads(clues.read_text(encoding="utf-8"))
-    assert set(written) == {gc.word_code(WORD, "key"), gc.word_code("slowly", "key")}
+    assert set(written) == {gc.clue_code(WORD, "key"), gc.clue_code("slowly", "key")}
 
 # The run loop, with a fake entry maker instead of the models.
 
@@ -227,7 +228,7 @@ def test_a_crash_while_saving_keeps_the_old_report(tmp_path, monkeypatch):
     def broken_fsync(fd):
         raise KeyboardInterrupt  # stopped after writing the temp file, before the move
 
-    monkeypatch.setattr(gc.os, "fsync", broken_fsync)
+    monkeypatch.setattr("os.fsync", broken_fsync)
     with pytest.raises(KeyboardInterrupt):
         gc.save(report, {"slowly": _entry(), "quickly": _entry()})
     assert report.read_text(encoding="utf-8") == before
@@ -345,3 +346,47 @@ def test_each_redo_round_uses_a_new_seed(tmp_path, monkeypatch):
     n = len(WORDS)
     assert seeds == [gc.OLLAMA_SEED] * n + [gc.OLLAMA_SEED + 1] * n + [gc.OLLAMA_SEED + 2] * n
     assert {e["round"] for e in json.loads(report.read_text(encoding="utf-8")).values()} == {2}
+
+
+def test_export_never_drops_a_scheduled_puzzles_clues(tmp_path, monkeypatch):
+    schedule = tmp_path / "schedule.txt"
+    schedule.write_text("\n".join(schedule_code(w, "key") for w in (WORD, "slowly")) + "\n", encoding="utf-8")
+    targets = tmp_path / "targets.txt"
+    targets.write_text(WORD + "\n", encoding="utf-8")  # "slowly" has left the answers
+    monkeypatch.setattr(gc, "TARGETS_PATH", targets)
+    monkeypatch.setattr(gc, "schedule_key", lambda: "key")
+    clues = tmp_path / "clues.json"
+    results = {WORD: {"passed": True, "clues": ["a", "b", "c"]},
+               "slowly": {"passed": True, "clues": ["d", "e", "f"]}}
+    gc.export(results, clues, schedule)
+    full = json.loads(clues.read_text(encoding="utf-8"))
+    assert len(full) == 2
+
+    gc.export({WORD: results[WORD]}, clues, schedule)  # "slowly" missing from the report
+    assert json.loads(clues.read_text(encoding="utf-8")) == full
+    gc.export({}, clues, schedule)  # a mistyped report path
+    assert json.loads(clues.read_text(encoding="utf-8")) == full
+
+
+def test_export_puts_the_clues_in_code_order(tmp_path, monkeypatch):
+    # In word order, the codes would line up with the public answer list.
+    words = [WORD, "slowly", "gently", "softly", "loudly", "calmly"]
+    schedule = tmp_path / "schedule.txt"
+    schedule.write_text("".join(schedule_code(w, "key") + "\n" for w in words), encoding="utf-8")
+    targets = tmp_path / "targets.txt"
+    targets.write_text("\n".join(words) + "\n", encoding="utf-8")
+    monkeypatch.setattr(gc, "TARGETS_PATH", targets)
+    monkeypatch.setattr(gc, "schedule_key", lambda: "key")
+    clues = tmp_path / "clues.json"
+    gc.export({w: {"passed": True, "clues": ["a", "b", "c"]} for w in words}, clues, schedule)
+    codes = list(json.loads(clues.read_text(encoding="utf-8")))
+    assert codes == sorted(codes)
+    assert codes != [gc.clue_code(w, "key") for w in sorted(words)]
+
+
+def test_malformed_model_replies_never_pass(checker, monkeypatch):
+    assert gc.check(checker, WORD, "fast", {**WRITTEN, "strong": 5})[2] == ["rules"]
+    monkeypatch.setattr(gc, "ask", lambda *args: {"correct": "false", "reason": None})
+    assert gc.check(checker, WORD, "fast", WRITTEN)[2] == ["facts"]
+    monkeypatch.setattr(gc, "ask", lambda *args: {"guesses": None})
+    assert checker.solve(WORD, ["a", "b", "c"]) == ([None] * 3, [[]] * 3)

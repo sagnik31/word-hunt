@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from backend.daily import DailySchedule
 from backend.dependencies import get_results, get_schedule, open_answer
 from backend.results import ResultStore, summarize
-from backend.schemas import ResultsResponse
+from backend.schemas import DeviceId, ResultsResponse
 
 router = APIRouter()
 
@@ -16,7 +16,7 @@ router = APIRouter()
 @router.get("/results/{number}", response_model=ResultsResponse)
 def results_endpoint(
     number: int,
-    device_id: Optional[str] = Query(None, max_length=100),
+    device_id: DeviceId = None,
     score: Optional[int] = Query(None, ge=0, le=100),
     schedule: DailySchedule = Depends(get_schedule),
     store: Optional[ResultStore] = Depends(get_results),

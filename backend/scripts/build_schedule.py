@@ -34,7 +34,8 @@ from backend.config import (  # noqa: E402
     TARGET_WORDS_PATH,
     schedule_key,
 )
-from backend.daily import DailySchedule, decode, read_codes, word_code  # noqa: E402
+from backend.daily import DailySchedule, decode, read_codes, schedule_code  # noqa: E402
+from backend.utils.files import write_atomic  # noqa: E402
 from backend.utils.loaders import load_word_list  # noqa: E402
 
 HEADER = (
@@ -84,7 +85,7 @@ def main() -> None:
     random.SystemRandom().shuffle(new_words)
     words = past + future + new_words
 
-    SCHEDULE_PATH.write_text(HEADER + "".join(word_code(w, key) + "\n" for w in words), encoding="utf-8")
+    write_atomic(SCHEDULE_PATH, HEADER + "".join(schedule_code(w, key) + "\n" for w in words))
     dropped = len(old_words) - frozen - len(future)
     print(f"Puzzles kept as they were (today and before): {len(past)}")
     print(f"Future puzzles kept: {len(future)}  dropped (pruned): {dropped}")

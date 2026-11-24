@@ -50,7 +50,8 @@ def load_schedule(engine: WordGameEngine) -> DailySchedule:
         raise RuntimeError(f"Schedule is empty: {SCHEDULE_PATH}")
     missing = sum(w is None for w in schedule.words)
     if missing:
-        print(f"[startup] Warning: {missing} schedule lines don't decode (wrong key?)")
+        # Fails the deploy's health check, rather than a puzzle on its day.
+        raise RuntimeError(f"{missing} schedule lines don't decode (wrong key?)")
     return schedule
 
 

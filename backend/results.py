@@ -60,8 +60,8 @@ CREATE TABLE IF NOT EXISTS results (
 """
 
 
-def valid_device_id(device_id: Optional[str]) -> bool:
-    return bool(device_id) and _DEVICE_ID_RE.fullmatch(device_id) is not None
+def valid_device_id(device_id: object) -> bool:
+    return isinstance(device_id, str) and _DEVICE_ID_RE.fullmatch(device_id) is not None
 
 
 @dataclass(frozen=True)
@@ -101,7 +101,7 @@ class ResultStore:
                 try:
                     if self._conn is None:
                         self._conn = self._connect()
-                        self._conn.execute(SCHEMA)
+                        self._execute(SCHEMA, (), False)
                     return self._execute(sql, params, fetch)
                 except Exception:
                     # A dropped connection (Neon paused) or a broken one:
@@ -143,6 +143,15 @@ class ResultStore:
             ),
         )
         return count == 1
+
+    def score_of(self, puzzle: int, device_id: str, solved: bool) -> Optional[int]:
+        """The score stored for a device's solve (or quit) of a puzzle, if any."""
+        rows = self._run(
+            "SELECT score, solved FROM results WHERE puzzle = ? AND device_id = ?",
+            (puzzle, device_id),
+            fetch=True,
+        )
+        return next((int(score) for score, s in rows if bool(s) == solved), None)
 
     def day(self, puzzle: int) -> List[Row]:
         rows = self._run(

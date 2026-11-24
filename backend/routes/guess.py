@@ -27,7 +27,7 @@ def make_guess_endpoint(
         stats = payload.stats
         guesses = stats.guess_count + 1  # the winning guess counts too
         score = solve_score(stats.elapsed_seconds, stats.clue_count, stats.hint_count, guesses)
-        save_result(
+        score = save_result(
             results,
             schedule,
             payload.puzzle,

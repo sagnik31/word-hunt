@@ -36,7 +36,7 @@ python backend/scripts/extract_embeddings.py
 | `data/word_forms.txt` | Plurals, verb forms, comparatives and British spellings (~24,000) | Forms that aren't guess words themselves, each mapped to a base word: the rules in `backend/utils/word_forms.py`, WordNet's lists of irregular forms ("larvae", "blew"), and British spellings from the narrow rewrite rules and table in `build_word_lists.py` ("colour", "centres") |
 | `data/irregular_plurals.txt` | Irregular plurals (~225) | From WordNet ("larvae" → "larva"), kept even when the plural is a guess word itself, so it wins when the singular is the answer |
 
-The thresholds are constants at the top of `build_word_lists.py`. A word counts as a proper noun when WordNet only knows it with a capital letter, or when it's listed in `data/proper_nouns.txt`.
+Names are left out of the word forms too. The thresholds are constants at the top of `build_word_lists.py`. A word counts as a proper noun when WordNet only knows it with a capital letter, or when it's listed in `data/proper_nouns.txt`.
 
 `extract_embeddings.py` looks up a 300-dimensional GloVe vector for every guess word, scales each to unit length and saves them as float16 in `data/embeddings.npz` (about 18 MB).
 
@@ -56,7 +56,7 @@ It shuffles the answers into `data/daily_schedule.txt`, where line N is puzzle #
 
 Rerunning it never changes today's or earlier puzzles. It drops future words that are no longer answers and appends new ones, and no word repeats. Changing `LAUNCH_DATE` or deleting the file would change puzzles people have already played.
 
-There's one puzzle per answer, so the schedule runs out after as many days as there are answers: with today's 200, the last puzzle is on 2027-06-10. After that, `/today` returns 503 and the page says there's no puzzle today, so add answers (and their clues) well before then.
+There's one puzzle per answer, so the schedule runs out after as many days as there are answers: with today's 200, the last puzzle is on 2027-06-10. After that, `/today` gives no puzzle and the page offers only past ones, so add answers (and their clues) well before then.
 
 A relaunch, which starts again at puzzle #1, is a one-off decision (ADR 0003; done on 2026-11-23). Set `LAUNCH_DATE` to the launch day, empty `data/daily_schedule.txt`, rerun the script with the **same key** and rerun `generate_clues.py --export-only`. Clues are keyed by word and key, not by puzzle number, so the clues file comes out the same. Browsers move saves from the old launch aside by themselves (ADR 0004). If the results table already has rows, empty it, because a device's first result for a puzzle number wins.
 
@@ -98,7 +98,7 @@ When a set fails, the writer is told exactly what went wrong and asked to fix it
 - On a CPU it takes about 45 seconds per word: the run for the 200 answers took about 2.5 hours.
 - Each request asks Ollama for an 8,192-token context (`NUM_CTX`). Ollama's default is the model's maximum, which made the writer hold about 12 GB of RAM. A prompt that would nearly fill the context is an error for that word, never a silent cut.
 - Progress goes to `data/raw/clue_report.json` after every word (git-ignored, since it names the words), written to a temporary file and then moved into place, so Ctrl+C or a kill never damages it. Rerun the same command to carry on: only unfinished words are done. A one-line summary per word goes to `data/raw/clue_report.log`; the screen shows only counts, never words.
-- A word whose models fail (Ollama down, timeouts) is logged and tried again on the next run; after 3 in a row the run stops.
+- A word whose models fail (Ollama down, timeouts, malformed replies) is logged and tried again on the next run; after 3 in a row the run stops.
 - `--redo-failed` retries the words that failed. Each round uses a new sampling seed (the report records the word's `round`), because with the same seed a retry repeats nearly the same tries: on the answers, a same-seed retry rescued 1 of 22. `--words <file> --report <file>` runs on another word list, such as a test set, without touching the answers. `--summary` prints the pass rate, failure reasons and time, naming no words.
-- **A run never writes `data/clues.json`.** After the skim, `--export-only` writes every answer's full clue set, including sets that failed a check (see ADR 0006 for the trade-off); only a word whose models never finished, and words from other lists, are left out. Skim the failed sets (`"passed": false`) and the `review_first` sets first, keyed by the schedule codes. That step needs the schedule key, and refuses to write the file if the key doesn't decode `data/daily_schedule.txt`.
+- **A run never writes `data/clues.json`.** After the skim, `--export-only` writes every answer's full clue set, including sets that failed a check (see ADR 0006 for the trade-off); only a word whose models never finished, and words from other lists, are left out. Skim the failed sets (`"passed": false`) and the `review_first` sets first. The file is keyed by clue codes, which the schedule doesn't use, and sorted by them, so it doesn't tell which day a set is for (ADR 0003). That step needs the schedule key, and refuses to write the file if the key doesn't decode `data/daily_schedule.txt` or the report has no finished sets. A scheduled puzzle never loses clues it already has.
 - Puzzles without clues still work: the help ladder goes straight to hints.

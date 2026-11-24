@@ -30,7 +30,7 @@ SCHEDULE_PATH = Path(os.environ.get("WORDHUNT_SCHEDULE_PATH", DATA_DIR / "daily_
 SCHEDULE_KEY_FILE = BASE_DIR / "schedule.key"
 
 # Built by backend/scripts/generate_clues.py: three clues per answer, vague to
-# strong, keyed by the same codes as the schedule so the file names no words.
+# strong, keyed by codes that differ from the schedule's, so clues don't tell their day.
 CLUES_PATH = Path(os.environ.get("WORDHUNT_CLUES_PATH", DATA_DIR / "clues.json"))
 
 # Results database for "you beat X% of today's players": a Postgres URL

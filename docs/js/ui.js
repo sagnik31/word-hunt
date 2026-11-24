@@ -3,7 +3,6 @@ import {
     dateOfPuzzle,
     deviceId,
     formatDate,
-    msUntilNextPuzzle,
     puzzleOnDate,
 } from "./storage.js";
 
@@ -28,6 +27,8 @@ const HELP_TYPES = new Set(["clue", "hint", "similar word"]);
 // Loading today's puzzle at start-up: tries, and the wait between them.
 const STARTUP_TRIES = 4;
 const STARTUP_RETRY_MS = 5000;
+// How long to wait before asking again for the new day, if that fails.
+const ROLLOVER_RETRY_MS = 60_000;
 
 const guessCount = (n) => `${n} more guess${n === 1 ? "" : "es"}`;
 const players = (n) => `${n} player${n === 1 ? "" : "s"}`;
@@ -142,7 +143,12 @@ export class GameUI {
         this.api = apiClient;
         this.progress = new Progress();
         this.launchDate = null; // date of puzzle #1, from the server
-        this.today = null; // today's puzzle number
+        this.today = null; // today's puzzle number; null once the schedule has run out
+        this.latest = null; // the newest released puzzle
+        this.day = null; // the day's number, with or without a puzzle (for streaks)
+        this.nextAt = null; // when the next day starts, on this browser's clock
+        this.refreshing = false; // asking the server about a new day
+        this.retryAt = 0; // not before this, after a failed ask
         this.puzzle = null; // the puzzle on screen
         this.game = null; // its saved progress
 
@@ -170,8 +176,7 @@ export class GameUI {
         this.helpNote = $("help-note");
         this.cluesSection = $("clues");
         this.clueList = $("clue-list");
-        this.helpBusy = false; // a clue or hint request is on its way
-        this.playBusy = false; // a guess or quit request is on its way
+        this.busyPuzzles = new Set(); // puzzles with a guess, quit, clue or hint on its way
         this.startSection = $("start");
         this.playButton = $("play-button");
         this.clockEl = $("clock");
@@ -191,10 +196,21 @@ export class GameUI {
         $("archive-button").addEventListener("click", () => this.goTo("archive"));
         $("today-button").addEventListener("click", () => this.goTo(""));
         window.addEventListener("hashchange", () => this.route());
+        // Other tabs save to the same storage; a sleeping tab misses the event.
+        window.addEventListener("storage", () => this.syncTabs());
+        document.addEventListener("visibilitychange", () => {
+            if (!document.hidden) this.syncTabs();
+        });
     }
 
     get gameOver() {
         return !this.game || this.game.status !== "playing";
+    }
+
+    // One request at a time per puzzle, so the stats a finish is scored with
+    // include every clue and hint on screen.
+    get busy() {
+        return this.busyPuzzles.has(this.puzzle);
     }
 
     setStatus(message, type = "info") {
@@ -226,10 +242,76 @@ export class GameUI {
         }
         this.launchDate = today.launch_date;
         this.progress.useLaunch(this.launchDate);
-        this.today = today.puzzle;
-        this.setStatus("Server online.", "ok");
+        this.setToday(today);
+        if (this.today === null) this.setStatus("There's no puzzle today, but you can still play past ones.");
+        else this.setStatus("Server online.", "ok");
         this.route();
         setInterval(() => this.tick(), 1000);
+    }
+
+    // The server's word on the date, so a wrong browser clock doesn't matter.
+    setToday(data) {
+        this.today = data.puzzle;
+        this.latest = data.latest ?? data.puzzle; // an older backend has no `latest`
+        this.day = puzzleOnDate(this.launchDate, Date.parse(`${data.date}T00:00:00Z`));
+        this.nextAt = Date.now() + (data.seconds_until_next + 1) * 1000; // the server rounds down
+    }
+
+    // The countdown has ended: ask the server whether a new puzzle is out.
+    async refreshToday() {
+        if (this.refreshing || Date.now() < this.retryAt) return;
+        this.refreshing = true;
+        try {
+            const data = await this.api.getToday();
+            if (data.launch_date !== this.launchDate) {
+                location.reload(); // relaunched
+                return;
+            }
+            const before = this.latest;
+            const day = this.day;
+            this.setToday(data);
+            if (this.day === day) return;
+            if (!this.archiveSection.classList.contains("hidden")) {
+                this.showArchive();
+            } else if (this.puzzle !== null) {
+                this.renderTitle();
+                this.renderStreak();
+                this.renderPlayButton();
+                this.nextPuzzleEl.classList.add("hidden");
+            }
+            if (this.latest > before) {
+                this.setStatus("A new puzzle is out! Press \"Today's puzzle\" to play it.", "ok");
+            }
+        } catch (err) {
+            console.warn("Could not check for a new puzzle:", err);
+            this.retryAt = Date.now() + ROLLOVER_RETRY_MS;
+        } finally {
+            this.refreshing = false;
+        }
+    }
+
+    // Show what another tab has saved for the puzzle on screen.
+    syncTabs() {
+        if (this.latest === null) return;
+        if (!this.progress.sync()) {
+            location.reload(); // another tab has seen a relaunch
+            return;
+        }
+        if (!this.archiveSection.classList.contains("hidden")) {
+            this.showArchive();
+        } else if (this.puzzle !== null && this.progress.has(this.puzzle)) {
+            const saved = this.progress.game(this.puzzle);
+            // The clue count is loaded, not saved, so it may differ.
+            const key = (g) => JSON.stringify([g.entries, g.startedAt, g.status]);
+            if (key(saved) !== key(this.game)) this.reopen();
+        }
+    }
+
+    // Redraw the puzzle from its save, keeping what's being typed.
+    reopen() {
+        const draft = this.inputEl.value;
+        this.openPuzzle(this.puzzle);
+        this.inputEl.value = draft;
     }
 
     // --- Navigation: "" is today, "#7" is puzzle 7, "#archive" the list ------
@@ -244,14 +326,16 @@ export class GameUI {
     }
 
     route() {
-        if (this.today === null) return;
+        if (this.latest === null) return;
         const hash = location.hash.replace("#", "");
         if (hash === "archive") {
             this.showArchive();
             return;
         }
         const n = Number.parseInt(hash, 10);
-        this.openPuzzle(Number.isInteger(n) && n >= 1 && n <= this.today ? n : this.today);
+        if (Number.isInteger(n) && n >= 1 && n <= this.latest) this.openPuzzle(n);
+        else if (this.today !== null) this.openPuzzle(this.today);
+        else this.showArchive();
     }
 
     openPuzzle(puzzle) {
@@ -278,8 +362,7 @@ export class GameUI {
         const waiting = !this.gameOver && this.game.startedAt === null;
         this.startSection.classList.toggle("hidden", !waiting);
         this.formEl.classList.toggle("hidden", waiting);
-        this.playButton.textContent =
-            this.puzzle === this.today ? "▶ Play today's game" : `▶ Play puzzle #${this.puzzle}`;
+        this.renderPlayButton();
         this.renderClock();
 
         if (waiting) {
@@ -288,9 +371,14 @@ export class GameUI {
         } else if (this.gameOver) {
             this.showFinalResult();
         } else {
-            this.enableControls();
+            this.renderControls();
             this.inputEl.focus();
         }
+    }
+
+    renderPlayButton() {
+        this.playButton.textContent =
+            this.puzzle === this.today ? "▶ Play today's game" : `▶ Play puzzle #${this.puzzle}`;
     }
 
     // Pressing Play starts the clock. It's wall time: it keeps running while
@@ -302,7 +390,7 @@ export class GameUI {
         this.startSection.classList.add("hidden");
         this.formEl.classList.remove("hidden");
         this.renderClock();
-        this.enableControls();
+        this.renderControls();
         this.inputEl.focus();
     }
 
@@ -334,7 +422,7 @@ export class GameUI {
     }
 
     renderStreak() {
-        const { current, best } = this.progress.streaks(this.today);
+        const { current, best } = this.progress.streaks(this.day);
         this.streakEl.textContent = `🔥 Streak: ${current} · Best: ${best}`;
     }
 
@@ -345,7 +433,7 @@ export class GameUI {
         this.renderStreak();
 
         this.archiveList.textContent = "";
-        for (let n = this.today; n >= 1; n -= 1) {
+        for (let n = this.latest; n >= 1; n -= 1) {
             const li = document.createElement("li");
             const button = document.createElement("button");
             button.type = "button";
@@ -369,32 +457,28 @@ export class GameUI {
 
     // Once a second: the countdown, and noticing a new day has started.
     tick() {
-        const nowToday = puzzleOnDate(this.launchDate);
-        if (nowToday > this.today) {
-            this.today = nowToday;
-            if (!this.archiveSection.classList.contains("hidden")) {
-                this.showArchive();
-            } else {
-                this.renderTitle();
-                this.renderStreak();
-            }
-            this.setStatus("A new puzzle is out! Press \"Today's puzzle\" to play it.", "ok");
-        }
+        if (Date.now() >= this.nextAt) this.refreshToday();
         if (this.game && this.archiveSection.classList.contains("hidden")) this.renderClock();
         if (!this.nextPuzzleEl.classList.contains("hidden")) {
-            this.nextPuzzleEl.textContent = `Next puzzle in ${formatCountdown(msUntilNextPuzzle())}`;
+            this.nextPuzzleEl.textContent = `Next puzzle in ${formatCountdown(this.nextAt - Date.now())}`;
         }
     }
 
     // --- Saved progress ---------------------------------------------------
 
     save() {
-        this.progress.save(this.puzzle, this.game);
+        if (!this.progress.save(this.puzzle, this.game)) this.syncTabs();
     }
 
-    recordRank(rank) {
+    // The game a reply belongs to: the one on screen, or the saved one when
+    // the player has moved to another puzzle meanwhile.
+    gameOf(puzzle) {
+        return puzzle === this.puzzle ? this.game : this.progress.game(puzzle);
+    }
+
+    recordRank(game, rank) {
         if (typeof rank !== "number") return;
-        if (this.game.bestRank === null || rank < this.game.bestRank) this.game.bestRank = rank;
+        if (game.bestRank === null || rank < game.bestRank) game.bestRank = rank;
     }
 
     // An earlier valid guess of this word (or that counted as it), if any.
@@ -408,7 +492,7 @@ export class GameUI {
     stats() {
         const g = this.game;
         return {
-            elapsed_seconds: g.startedAt === null ? 0 : (Date.now() - g.startedAt) / 1000,
+            elapsed_seconds: g.startedAt === null ? 0 : Math.max(0, Date.now() - g.startedAt) / 1000,
             guess_count: distinctGuesses(g.entries).length,
             clue_count: g.clues.length,
             hint_count: g.hintCount,
@@ -466,7 +550,7 @@ export class GameUI {
         const last = this.game.entries[this.game.entries.length - 1];
         if (last && last.type === "quit") {
             this.renderQuit(last);
-        } else if (last) {
+        } else if (last?.is_correct) {
             this.renderResult(last);
         }
         this.nextPuzzleEl.classList.toggle("hidden", this.puzzle !== this.today);
@@ -575,15 +659,15 @@ export class GameUI {
         const g = this.game;
         const next = this.gameOver ? null : nextHelp(g);
         const { needed, stuck } = helpProgress(g);
-        const onlyAnswerLeft = g.bestRank !== null && g.bestRank <= 2;
+        const onlyAnswerLeft = g.bestRank !== null && (g.bestRank <= 2 || g.bestRank === g.noHintAt);
         const ready = next !== null && needed === 0 && !(next.kind === "hint" && onlyAnswerLeft);
 
         this.clueButton.textContent =
             next && next.kind === "clue" ? `🧩 Clue ${next.number} (−${next.cost})` : "🧩 Clue";
         this.hintButton.textContent =
             next && next.kind === "hint" ? `🧠 Hint ${next.number} (−${next.cost})` : "🧠 Hint";
-        this.clueButton.disabled = !(ready && next.kind === "clue") || this.helpBusy;
-        this.hintButton.disabled = !(ready && next.kind === "hint") || this.helpBusy;
+        this.clueButton.disabled = !(ready && next.kind === "clue") || this.busy;
+        this.hintButton.disabled = !(ready && next.kind === "hint") || this.busy;
 
         let note = "";
         if (this.gameOver) {
@@ -591,7 +675,7 @@ export class GameUI {
         } else if (next === null) {
             note = "You've used every clue and hint.";
         } else if (next.kind === "hint" && onlyAnswerLeft) {
-            note = "Your best is #2, so only the answer is closer: no hint can help.";
+            note = `Your best is #${g.bestRank}, and only the answer is closer: no hint can help.`;
         } else {
             const name = `${next.kind === "clue" ? "Clue" : "Hint"} ${next.number}`;
             const noClues =
@@ -621,18 +705,36 @@ export class GameUI {
         this.historyList.prepend(li);
     }
 
-    record(entry) {
-        this.game.entries.push(entry);
-        this.save();
+    // Add an entry to a puzzle's game, on screen or not. False when the game
+    // isn't on screen, or a finish from another tab has replaced it.
+    record(puzzle, game, entry) {
+        game.entries.push(entry);
+        const saved = this.progress.save(puzzle, game);
+        if (!this.archiveSection.classList.contains("hidden")) this.showArchive();
+        if (puzzle !== this.puzzle) {
+            this.renderStreak();
+            return false;
+        }
+        if (!saved) {
+            this.syncTabs();
+            return false;
+        }
         this.addToHistory(entry);
         this.renderHelp();
+        return true;
+    }
+
+    setBusy(puzzle, busy) {
+        if (busy) this.busyPuzzles.add(puzzle);
+        else this.busyPuzzles.delete(puzzle);
+        if (puzzle === this.puzzle) this.renderControls();
     }
 
     // --- Actions ----------------------------------------------------------
 
     async handleGuessSubmit(event) {
         event.preventDefault();
-        if (this.gameOver || this.playBusy) return;
+        if (this.gameOver || this.busy) return;
 
         const word = this.inputEl.value.trim();
         if (!word) return;
@@ -646,44 +748,47 @@ export class GameUI {
         }
 
         const puzzle = this.puzzle;
-        // Until the reply arrives, Quit waits: a winning reply after a quit
-        // would turn one game into two results.
-        this.playBusy = true;
-        this.guessButton.disabled = true;
-        this.quitButton.disabled = true;
-
+        // Until the reply arrives, everything else on this puzzle waits: a
+        // winning reply after a quit would turn one game into two results.
+        this.setBusy(puzzle, true);
+        // Sent on the puzzle's day, even if the reply comes after midnight.
+        const onTheDay = puzzle === this.today && Date.now() < this.nextAt;
         try {
             const data = await this.api.makeGuess(puzzle, word, this.stats(), this.deviceId);
-            if (puzzle !== this.puzzle || this.gameOver) return; // moved on, or finished meanwhile
+            const game = this.gameOf(puzzle);
+            if (game.status !== "playing") return; // finished meanwhile, in another tab
 
-            if (data.valid) this.recordRank(data.rank);
+            if (data.valid) this.recordRank(game, data.rank);
             if (data.valid && data.is_correct) {
-                this.game.status = "won";
-                this.game.finishedAt = Date.now();
-                this.game.score = data.score;
-                this.game.onTheDay = puzzle === puzzleOnDate(this.launchDate);
+                game.status = "won";
+                game.finishedAt = Date.now();
+                game.score = data.score;
+                game.onTheDay = onTheDay;
             }
-            this.renderResult(data);
-            this.record({ ...data, type: "guess" });
-            if (this.gameOver) this.showFinalResult();
+            if (this.record(puzzle, game, { ...data, type: "guess" })) {
+                this.renderResult(data);
+                if (this.gameOver) this.showFinalResult();
+            }
+            this.clearInput(puzzle, word);
         } catch (err) {
             console.error("Guess request failed:", err);
-            this.showResultLine("Error communicating with the server. Please try again.", "result-text-error");
-        } finally {
-            this.playBusy = false;
-            this.inputEl.value = "";
-            // A winning guess has already disabled everything.
-            if (!this.gameOver && puzzle === this.puzzle) {
-                this.guessButton.disabled = false;
-                this.quitButton.disabled = false;
-                this.inputEl.focus();
+            if (puzzle === this.puzzle) {
+                this.showResultLine("Error communicating with the server. Please try again.", "result-text-error");
             }
+        } finally {
+            this.setBusy(puzzle, false);
+            if (puzzle === this.puzzle && !this.gameOver) this.inputEl.focus();
         }
+    }
+
+    // Clear a guess that's been answered, unless something else is typed now.
+    clearInput(puzzle, word) {
+        if (puzzle === this.puzzle && this.inputEl.value.trim() === word) this.inputEl.value = "";
     }
 
     // Is this kind of help unlocked right now?
     helpReady(kind) {
-        if (this.gameOver || this.helpBusy) return false;
+        if (this.gameOver || this.busy) return false;
         const next = nextHelp(this.game);
         return next !== null && next.kind === kind && helpProgress(this.game).needed === 0;
     }
@@ -692,30 +797,32 @@ export class GameUI {
         if (!this.helpReady("hint")) return;
 
         const puzzle = this.puzzle;
-        this.helpBusy = true;
-        this.renderHelp();
+        this.setBusy(puzzle, true);
         try {
             const s = await this.api.getHint(puzzle, this.game.bestRank, this.game.hintCount);
-            if (puzzle !== this.puzzle || this.gameOver) return;
+            const game = this.gameOf(puzzle);
+            if (game.status !== "playing") return;
 
-            this.game.hintCount += 1;
-            this.recordRank(s.rank);
-            this.showResultLine(
-                `🧠 Hint: try "${s.word}" — rank #${s.rank}/${s.total}, similarity=${s.similarity.toFixed(4)} (${s.percentile.toFixed(1)} percentile) — ${s.hotness}`,
-            );
-            this.applyHotnessColor(s.hotness);
-            this.record({ ...s, type: "hint" });
+            game.hintCount += 1;
+            this.recordRank(game, s.rank);
+            if (this.record(puzzle, game, { ...s, type: "hint" })) {
+                this.showResultLine(
+                    `🧠 Hint: try "${s.word}" — rank #${s.rank}/${s.total}, similarity=${s.similarity.toFixed(4)} (${s.percentile.toFixed(1)} percentile) — ${s.hotness}`,
+                );
+                this.applyHotnessColor(s.hotness);
+            }
         } catch (err) {
             if (puzzle !== this.puzzle) return;
             if (err.status === 409) {
+                this.game.noHintAt = this.game.bestRank;
+                this.save();
                 this.showResultLine("No hint can help now: only the answer is closer than your best.", "result-text-error");
             } else {
                 console.error("Hint request failed:", err);
                 this.showResultLine("Error fetching a hint from the server. Please try again.", "result-text-error");
             }
         } finally {
-            this.helpBusy = false;
-            if (puzzle === this.puzzle) this.renderHelp();
+            this.setBusy(puzzle, false);
         }
     }
 
@@ -723,17 +830,18 @@ export class GameUI {
         if (!this.helpReady("clue")) return;
 
         const puzzle = this.puzzle;
-        this.helpBusy = true;
-        this.renderHelp();
+        this.setBusy(puzzle, true);
         try {
             const data = await this.api.getClue(puzzle, this.game.clues.length);
-            if (puzzle !== this.puzzle || this.gameOver) return;
+            const game = this.gameOf(puzzle);
+            if (game.status !== "playing") return;
 
-            this.game.clues.push(data.clue);
-            this.game.clueTotal = data.total;
-            this.showResultLine(`🧩 Clue ${data.number}/${data.total}: ${data.clue}`);
-            this.record({ ...data, type: "clue" });
-            this.renderClues();
+            game.clues.push(data.clue);
+            game.clueTotal = data.total;
+            if (this.record(puzzle, game, { ...data, type: "clue" })) {
+                this.showResultLine(`🧩 Clue ${data.number}/${data.total}: ${data.clue}`);
+                this.renderClues();
+            }
         } catch (err) {
             if (puzzle !== this.puzzle) return;
             if (err.status === 404 || err.status === 409) {
@@ -745,33 +853,30 @@ export class GameUI {
                 this.showResultLine("Error fetching a clue from the server. Please try again.", "result-text-error");
             }
         } finally {
-            this.helpBusy = false;
-            if (puzzle === this.puzzle) this.renderHelp();
+            this.setBusy(puzzle, false);
         }
     }
 
     async handleQuitClick() {
-        if (this.gameOver || this.playBusy || this.helpBusy) return;
+        if (this.gameOver || this.busy) return;
 
         const puzzle = this.puzzle;
-        this.playBusy = true;
-        this.disableControls();
+        this.setBusy(puzzle, true);
         try {
             const data = await this.api.quitGame(puzzle, this.stats(), this.deviceId);
-            if (puzzle !== this.puzzle || this.gameOver) return;
+            const game = this.gameOf(puzzle);
+            if (game.status !== "playing") return;
 
-            this.game.status = "quit";
-            this.game.finishedAt = Date.now();
-            this.game.score = data.score;
-            this.record({ ...data, type: "quit" });
-            this.showFinalResult();
+            game.status = "quit";
+            game.finishedAt = Date.now();
+            game.score = data.score;
+            if (this.record(puzzle, game, { ...data, type: "quit" })) this.showFinalResult();
         } catch (err) {
             console.error("Quit request failed:", err);
             if (puzzle !== this.puzzle) return;
             this.showResultLine("Error quitting the game. Please try again.", "result-text-error");
-            this.enableControls();
         } finally {
-            this.playBusy = false;
+            this.setBusy(puzzle, false);
         }
     }
 
@@ -781,10 +886,15 @@ export class GameUI {
         }
     }
 
-    enableControls() {
-        for (const el of [this.inputEl, this.guessButton, this.quitButton]) {
-            el.disabled = false;
+    // Typing stays possible while a request is on its way.
+    renderControls() {
+        if (this.gameOver || this.game.startedAt === null) {
+            this.disableControls();
+            return;
         }
+        this.inputEl.disabled = false;
+        this.guessButton.disabled = this.busy;
+        this.quitButton.disabled = this.busy;
         this.renderHelp();
     }
 }

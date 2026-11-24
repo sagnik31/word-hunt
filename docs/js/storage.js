@@ -9,25 +9,33 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const FIRST_LAUNCH = "2026-11-08";
 const OLD_SAVES_PREFIX = "wordhunt:old:";
 
+// What the server accepts as a device ID (DEVICE_ID_PATTERN in backend/results.py).
+const DEVICE_ID = /^[A-Za-z0-9-]{8,64}$/;
+
+const isObject = (x) => x !== null && typeof x === "object" && !Array.isArray(x);
+
+// The saved data, or null when there's none, it's damaged or it can't be read.
 function readAll() {
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
         const data = raw ? JSON.parse(raw) : null;
-        const games = data?.games;
-        if (games !== null && typeof games === "object" && !Array.isArray(games)) return data;
+        if (isObject(data?.games)) return data;
     } catch (err) {
         console.warn("Could not read saved progress:", err);
     }
-    return { games: {} };
+    return null;
 }
 
+// Returns whether it worked.
 function writeAll(data) {
     try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+        return true;
     } catch (err) {
         // Private mode or storage blocked: the game still works, it just
         // won't remember progress after the tab closes.
         console.warn("Could not save progress:", err);
+        return false;
     }
 }
 
@@ -38,6 +46,7 @@ function newGame() {
         clues: [], // clue texts shown so far, vaguest first
         clueTotal: null, // how many clues the puzzle has, once the server says
         bestRank: null,
+        noHintAt: null, // the best rank at which the server had no hint to give
         startedAt: null, // ms timestamp of pressing Play (older saves: the first guess or help)
         finishedAt: null, // ms timestamp of solving or quitting
         status: "playing", // "playing" | "won" | "quit"
@@ -46,9 +55,52 @@ function newGame() {
     };
 }
 
+// A history entry that can be shown and counted.
+function validEntry(e) {
+    if (!isObject(e)) return false;
+    if (e.type === "quit") return typeof e.answer === "string";
+    if (e.type === "clue") return typeof e.clue === "string";
+    const ranked = typeof e.rank === "number" && typeof e.similarity === "number";
+    if (e.type === "guess") return typeof e.guess === "string" && (!e.valid || ranked);
+    return (e.type === "hint" || e.type === "similar word") && typeof e.word === "string" && ranked;
+}
+
+// A saved game with every field usable: a missing one (older saves) or a
+// damaged one gets its value from a fresh game.
+function cleanGame(saved) {
+    const fresh = newGame();
+    if (!isObject(saved)) return fresh;
+    const game = { ...fresh, ...saved };
+    game.entries = Array.isArray(saved.entries) ? saved.entries.filter(validEntry) : [];
+    game.clues = Array.isArray(saved.clues) ? saved.clues.filter((c) => typeof c === "string") : [];
+    if (!Number.isFinite(game.hintCount)) game.hintCount = 0;
+    for (const key of ["clueTotal", "bestRank", "noHintAt", "startedAt", "finishedAt", "score"]) {
+        if (!Number.isFinite(game[key])) game[key] = null;
+    }
+    if (!["playing", "won", "quit"].includes(game.status)) game.status = "playing";
+    return game;
+}
+
+const finished = (game) => game?.status === "won" || game?.status === "quit";
+
 export class Progress {
     constructor() {
-        this.data = readAll();
+        this.data = readAll() || { games: {} };
+        this.unsaved = new Set(); // puzzles whose last write failed
+    }
+
+    // Take in what other tabs have saved. Games this tab couldn't write stay.
+    // False when another tab has moved the saves to a different launch.
+    sync() {
+        const stored = readAll();
+        if (stored === null) return true;
+        if (this.data.launch && stored.launch && stored.launch !== this.data.launch) return false;
+        const games = { ...stored.games };
+        for (const n of this.unsaved) {
+            if (!finished(games[n])) games[n] = this.data.games[n];
+        }
+        this.data = { ...stored, launch: stored.launch || this.data.launch, games };
+        return true;
     }
 
     // Match the saves to the server's launch date. After a relaunch the old
@@ -64,19 +116,30 @@ export class Progress {
             return;
         }
         if (Object.keys(this.data.games).length > 0) {
-            try {
-                localStorage.setItem(OLD_SAVES_PREFIX + saved, JSON.stringify(this.data));
-            } catch (err) {
-                console.warn("Could not back up old progress:", err);
-            }
+            this.backUp(OLD_SAVES_PREFIX + saved);
         }
         this.data = { launch: launchDate, games: {} };
         writeAll(this.data);
     }
 
+    // With no room for a second copy, the first one goes before the backup is
+    // written.
+    backUp(key) {
+        const old = JSON.stringify(this.data);
+        try {
+            localStorage.setItem(key, old);
+        } catch {
+            try {
+                localStorage.removeItem(STORAGE_KEY);
+                localStorage.setItem(key, old);
+            } catch (err) {
+                console.warn("Could not back up old progress:", err);
+            }
+        }
+    }
+
     game(puzzle) {
-        // Older saves lack newer fields, so fill them in from a fresh game.
-        const game = { ...newGame(), ...this.data.games[puzzle] };
+        const game = cleanGame(this.data.games[puzzle]);
         // Saves from before gameplay v2 counted Hint and Similar Word apart;
         // both are Hints now.
         if ("similarCount" in game) {
@@ -91,9 +154,17 @@ export class Progress {
         return puzzle in this.data.games;
     }
 
+    // Saves one puzzle, leaving the others as they are in storage: another
+    // tab may have saved them since. A finish saved by another tab stays, and
+    // false says this game wasn't saved over it.
     save(puzzle, game) {
+        if (!this.sync()) return false;
+        const stored = this.data.games[puzzle];
+        if (stored !== game && finished(stored)) return false;
         this.data.games[puzzle] = game;
-        writeAll(this.data);
+        if (writeAll(this.data)) this.unsaved.clear();
+        else this.unsaved.add(puzzle);
+        return true;
     }
 
     // Current streak: puzzles solved on their own day, back from today.
@@ -128,7 +199,7 @@ export class Progress {
 export function deviceId() {
     try {
         let id = localStorage.getItem(DEVICE_KEY);
-        if (!id) {
+        if (!DEVICE_ID.test(id || "")) {
             id = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : randomId();
             localStorage.setItem(DEVICE_KEY, id);
         }
@@ -150,7 +221,7 @@ function randomId() {
 
 // --- Dates (puzzles change at midnight UTC) ---------------------------------
 
-export function puzzleOnDate(launchDate, when = Date.now()) {
+export function puzzleOnDate(launchDate, when) {
     const launch = Date.parse(`${launchDate}T00:00:00Z`);
     return Math.floor((when - launch) / DAY_MS) + 1;
 }
@@ -167,8 +238,4 @@ export function formatDate(date) {
         year: "numeric",
         timeZone: "UTC",
     });
-}
-
-export function msUntilNextPuzzle(when = Date.now()) {
-    return DAY_MS - (when % DAY_MS);
 }

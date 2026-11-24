@@ -683,7 +683,6 @@ anoints	anoint
 anomalies	anomaly
 anorexics	anorexic
 anothers	another
-ans	an
 answered	answer
 answering	answer
 answers	answer
@@ -6336,7 +6335,6 @@ doped	dope
 dopes	dope
 doping	dope
 doppelgangers	doppelganger
-dorking	dork
 dorks	dork
 dormitories	dormitory
 dorms	dorm
@@ -7325,7 +7323,6 @@ events	event
 eventualities	eventuality
 evered	ever
 evergreens	evergreen
-evers	ever
 eves	eve
 evicted	evict
 evicting	evict
@@ -8998,7 +8995,6 @@ goings	going
 goldener	golden
 goldens	golden
 golder	gold
-golding	gold
 goldmines	goldmine
 goldmining	goldmine
 golds	gold
@@ -9533,7 +9529,6 @@ hardhats	hardhat
 hardier	hardy
 hardies	hardy
 hardiest	hardy
-harding	hard
 hardliner	hardline
 hards	hard
 hardships	hardship
@@ -10307,7 +10302,6 @@ idolizes	idolize
 idolizing	idolize
 idols	idol
 ids	id
-ied	i
 ifs	if
 igloos	igloo
 ignited	ignite
@@ -11651,7 +11645,6 @@ latencies	latency
 lateraled	lateral
 laterals	lateral
 laters	later
-lates	late
 lathered	lather
 lathering	lather
 lathers	lather
@@ -11827,7 +11820,6 @@ lesioning	lesion
 lesions	lesion
 lessened	lessen
 lessens	lessen
-lessing	less
 lessons	lesson
 letdowns	letdown
 lets	let
@@ -12481,7 +12473,6 @@ mariners	mariner
 marines	marine
 maring	mare
 marionettes	marionette
-maritimes	maritime
 markdowns	markdown
 markers	marker
 marketed	market
@@ -12663,7 +12654,6 @@ mechanised	mechanize
 mechanisms	mechanism
 mechanized	mechanize
 mechanizing	mechanize
-med	me
 medaled	medal
 medaling	medal
 medalists	medalist
@@ -12965,7 +12955,6 @@ minerals	mineral
 miners	miner
 mineshafts	mineshaft
 minesweepers	minesweeper
-ming	me
 mingled	mingle
 mingles	mingle
 mingling	mingle
@@ -17026,7 +17015,6 @@ redcoats	redcoat
 reddened	redden
 redder	red
 reddest	red
-redding	red
 redecorated	redecorate
 redecorating	redecorate
 redeemed	redeem
@@ -18138,7 +18126,6 @@ rocketed	rocket
 rocketing	rocket
 rockets	rocket
 rockier	rocky
-rockies	rocky
 rockiest	rocky
 rocks	rock
 rockslides	rockslide
@@ -18149,7 +18136,6 @@ rodeos	rodeo
 rodes	rode
 roding	rod
 rods	rod
-rogers	roger
 rogues	rogue
 roles	role
 roling	role

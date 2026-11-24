@@ -14,7 +14,7 @@ def make_guess(
 ) -> Dict[str, Optional[object]]:
     typed = (guess_word or "").strip().lower()
 
-    # Plurals, verb forms and British spellings count as their base word:
+    # Most plurals, verb forms and British spellings count as their base word:
     # "cats" -> "cat", "colour" -> "color". A plural of the answer (or the
     # singular of a plural answer) wins even when it's a guess word itself
     # ("dogs", "larvae").

@@ -26,7 +26,7 @@ def quit_endpoint(
         stats.guess_count,
         stats.best_rank,
     )
-    save_result(
+    score = save_result(
         results,
         schedule,
         payload.puzzle,

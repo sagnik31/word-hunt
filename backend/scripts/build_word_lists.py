@@ -175,11 +175,13 @@ def build_word_forms(guesses: set, glove: dict, comparable: set) -> dict:
     comparatives ("bigger"), "-men" plurals and British spellings ("colour",
     "centres"). When several bases fit ("hoping": hop or hope), pick the
     most frequent one. `comparable` holds the words that may take "-er" and
-    "-est"."""
+    "-est". A form WordNet only knows as a name ("rockies") is left out."""
     forms = {}
 
     def add(form, base):
         if form in guesses or form not in glove or not GUESS_PATTERN.fullmatch(form):
+            return
+        if is_proper_noun(form):
             return
         current = forms.get(form)
         if current is None or glove[base] < glove[current]:
@@ -224,7 +226,6 @@ def build_word_forms(guesses: set, glove: dict, comparable: set) -> dict:
             and uk not in UK_SPELLING_SKIP
             and uk in glove
             and (uk in UK_SPELLINGS or wordnet_knows(uk))
-            and not is_proper_noun(uk)
         ):
             add(uk, base)
     return forms

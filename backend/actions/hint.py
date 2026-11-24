@@ -60,8 +60,8 @@ def get_hint(
 
     A word on the answer's stem is used only when nothing else is in the
     range, and a rare word only when no ordinary one is. A form of the
-    answer (a plural) is never revealed, since typing it wins; None when
-    nothing else is in the range.
+    answer (a plural) is never revealed, since typing it wins; when nothing
+    else is in the range, a closer word is used, or None if there's none.
     """
     low, high = ranks
     high = min(high, len(ranking.order) + 1)
@@ -69,10 +69,10 @@ def get_hint(
     def word_at(p):  # rank r is position r - 2
         return str(ranking.words[ranking.order[p]])
 
-    positions = [
-        p for p in range(low - 2, high - 1)
-        if word_at(p) not in ranking.answer_forms
-    ]
+    def fit(low, high):
+        return [p for p in range(low - 2, high - 1) if word_at(p) not in ranking.answer_forms]
+
+    positions = fit(low, high) or fit(2, low - 1)
     if not positions:
         return None
     fair = [p for p in positions if not shares_stem(ranking.answer, word_at(p))] or positions

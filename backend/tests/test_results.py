@@ -88,14 +88,14 @@ def test_postgres_queries_run_with_a_timeout():
     assert store.record(1, "device-aaaa", result()) is True
     assert store.day(1) == [Row("device-aaaa", True, 80, 12)]
     timeout = "in tx: SET LOCAL"
-    # The table is created once, then each query gets its own transaction
-    # with the timeout set first.
+    # The table is created once. That and each query get their own
+    # transaction, with the timeout set first.
     assert log == [
-        "CREATE TABLE",
+        "BEGIN", timeout, "in tx: CREATE TABLE", "END",
         "BEGIN", timeout, "in tx: INSERT INTO", "END",
         "BEGIN", timeout, "in tx: SELECT device_id,", "END",
     ]
-    assert 0 < QUERY_TIMEOUT_MS <= 10_000
+    assert QUERY_TIMEOUT_MS == 5000  # ADR 0007
 
 
 def test_postgres_timeout_retries_once_then_raises():
@@ -104,7 +104,7 @@ def test_postgres_timeout_retries_once_then_raises():
     with pytest.raises(RuntimeError, match="statement timeout"):
         store.day(1)
     # A timed-out query drops the connection and is tried once more on a new one.
-    assert log.count("CREATE TABLE") == 2
+    assert log.count("in tx: CREATE TABLE") == 2
     assert log.count("CLOSE") == 2
     assert store._conn is None
 
@@ -112,6 +112,7 @@ def test_postgres_timeout_retries_once_then_raises():
 def test_device_ids():
     assert valid_device_id("3f2b6c1e-8d4a-4f7e-9b1c-2a5d6e7f8a9b")
     assert not valid_device_id(None)
+    assert not valid_device_id(12345678)
     assert not valid_device_id("short")
     assert not valid_device_id("has space in it")
     assert not valid_device_id("3f2b6c1e-8d4a\n")  # a trailing newline

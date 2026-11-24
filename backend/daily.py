@@ -15,10 +15,19 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional
 
 
-def word_code(word: str, key: str) -> str:
-    """The schedule code for a word: a short keyed hash."""
-    digest = hmac.new(key.encode("utf-8"), word.encode("utf-8"), hashlib.sha256)
-    return digest.hexdigest()[:20]
+def _keyed_hash(text: str, key: str) -> str:
+    return hmac.new(key.encode("utf-8"), text.encode("utf-8"), hashlib.sha256).hexdigest()[:20]
+
+
+def schedule_code(word: str, key: str) -> str:
+    """A word's code in the schedule. It must differ from its clue code: the
+    clues give their word away, so a shared code would reveal the word's day."""
+    return _keyed_hash("schedule:" + word, key)
+
+
+def clue_code(word: str, key: str) -> str:
+    """A word's code in the clues file."""
+    return _keyed_hash(word, key)
 
 
 def today_utc() -> date:
@@ -40,7 +49,7 @@ def read_codes(path: Path) -> List[str]:
 
 def decode(codes: Iterable[str], key: str, vocabulary: Iterable[str]) -> List[Optional[str]]:
     """Turn codes back into words. A code no word matches becomes None."""
-    by_code: Dict[str, str] = {word_code(w, key): w for w in vocabulary}
+    by_code: Dict[str, str] = {schedule_code(w, key): w for w in vocabulary}
     return [by_code.get(c) for c in codes]
 
 
@@ -73,6 +82,11 @@ class DailySchedule:
             and self.words[number - 1] is not None
         )
 
+    def latest(self, today: Optional[date] = None) -> int:
+        """The newest released puzzle (0 when there's none)."""
+        newest = min(self.current(today), len(self.words))
+        return next((n for n in range(newest, 0, -1) if self.is_open(n, today)), 0)
+
     def answer(self, number: int) -> str:
         word = self.words[number - 1] if 1 <= number <= len(self.words) else None
         if word is None:
@@ -81,13 +95,13 @@ class DailySchedule:
 
 
 def load_clues(path: Path, key: str, answers: Iterable[Optional[str]]) -> Dict[str, List[str]]:
-    """Clues for each answer. The file is keyed by word codes, like the schedule."""
+    """Clues for each answer, from a file keyed by clue codes."""
     if not path.exists():
         return {}
     with open(path, "r", encoding="utf-8") as fh:
         by_code: Dict[str, List[str]] = json.load(fh)
     clues = {}
     for word in answers:
-        if word and word_code(word, key) in by_code:
-            clues[word] = by_code[word_code(word, key)]
+        if word and clue_code(word, key) in by_code:
+            clues[word] = by_code[clue_code(word, key)]
     return clues

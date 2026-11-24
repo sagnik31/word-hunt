@@ -4,7 +4,7 @@ from datetime import date
 import numpy as np
 import pytest
 
-from backend.daily import DailySchedule, decode, seconds_until_next_puzzle, word_code
+from backend.daily import DailySchedule, clue_code, decode, load_clues, schedule_code, seconds_until_next_puzzle
 from backend.actions.hint import get_hint, hint_ranks, shares_stem
 from backend.game import Ranking, WordGameEngine
 from backend.utils.word_forms import KEEP_PLURALS, singular_forms
@@ -260,11 +260,16 @@ def test_only_released_puzzles_are_open():
 
 
 def test_schedule_codes_hide_words_and_need_the_key():
-    codes = [word_code(w, "secret") for w in ("apple", "piano")]
+    codes = [schedule_code(w, "secret") for w in ("apple", "piano")]
     assert "apple" not in "".join(codes)
     vocabulary = {"apple", "piano", "tiger"}
     assert decode(codes, "secret", vocabulary) == ["apple", "piano"]
     assert decode(codes, "wrong", vocabulary) == [None, None]
+
+
+def test_a_clue_code_never_matches_the_schedule():
+    # The clues give their word away, so a shared code would give its day away.
+    assert schedule_code("apple", "secret") != clue_code("apple", "secret")
 
 
 def test_next_puzzle_countdown_is_within_a_day():
@@ -294,13 +299,19 @@ def test_hotness_bands_are_rank_based(rank, label):
     assert describe_hotness(rank) == label
 
 
-def test_clues_file_is_keyed_by_word_codes(tmp_path):
+def test_clues_file_is_keyed_by_clue_codes(tmp_path):
     import json
 
-    from backend.daily import load_clues, word_code
-
     path = tmp_path / "clues.json"
-    path.write_text(json.dumps({word_code("apple", "k"): ["a", "b", "c"]}))
+    path.write_text(json.dumps({clue_code("apple", "k"): ["a", "b", "c"]}))
     assert load_clues(path, "k", ["apple", "piano", None]) == {"apple": ["a", "b", "c"]}
     assert load_clues(path, "other key", ["apple"]) == {}
     assert load_clues(tmp_path / "missing.json", "k", ["apple"]) == {}
+
+
+def test_a_hint_range_of_only_answer_forms_widens_to_closer_words():
+    words = np.array(["stimulus", "nerve", "stimuli", "far"])
+    ranking = Ranking("stimulus", words, np.array([1.0, 0.8, 0.6, 0.1]), 0, {"stimuli"})
+    allowed = np.ones(len(words), dtype=bool)
+    assert hint_ranks(0, 4) == (3, 3)  # only "stimuli", which wins
+    assert get_hint(ranking, (3, 3), allowed)["word"] == "nerve"

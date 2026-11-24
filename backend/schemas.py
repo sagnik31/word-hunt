@@ -1,6 +1,8 @@
-from typing import List, Optional
+from typing import Annotated, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, BeforeValidator, Field
+
+from backend.results import valid_device_id
 
 
 # Generous limits on what a browser can send, so a hand-made request (an
@@ -22,14 +24,14 @@ class PlayerStats(BaseModel):
 
 # The browser's random device ID, so results count once per device. Anything
 # that doesn't look like one is ignored rather than refused.
-DeviceId = Optional[str]
+DeviceId = Annotated[Optional[str], BeforeValidator(lambda v: v if valid_device_id(v) else None)]
 
 
 class GuessRequest(BaseModel):
     puzzle: int
     word: str = Field(max_length=MAX_WORD_LENGTH)
     stats: PlayerStats = Field(default_factory=PlayerStats)
-    device_id: DeviceId = Field(None, max_length=100)
+    device_id: DeviceId = None
 
 
 class HintRequest(BaseModel):
@@ -46,11 +48,12 @@ class ClueRequest(BaseModel):
 class QuitRequest(BaseModel):
     puzzle: int
     stats: PlayerStats = Field(default_factory=PlayerStats)
-    device_id: DeviceId = Field(None, max_length=100)
+    device_id: DeviceId = None
 
 
 class TodayResponse(BaseModel):
-    puzzle: int  # today's puzzle number; every puzzle from 1 up to it is playable
+    puzzle: Optional[int] = None  # today's puzzle number; None once the schedule has run out
+    latest: int  # the newest released puzzle; every puzzle from 1 up to it is playable
     date: str  # today's UTC date, YYYY-MM-DD
     launch_date: str  # date of puzzle #1
     seconds_until_next: int
