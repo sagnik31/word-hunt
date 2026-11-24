@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS results (
 
 
 def valid_device_id(device_id: Optional[str]) -> bool:
-    return bool(device_id) and _DEVICE_ID_RE.match(device_id) is not None
+    return bool(device_id) and _DEVICE_ID_RE.fullmatch(device_id) is not None
 
 
 @dataclass(frozen=True)

@@ -13,7 +13,8 @@ function readAll() {
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
         const data = raw ? JSON.parse(raw) : null;
-        if (data && typeof data.games === "object") return data;
+        const games = data?.games;
+        if (games !== null && typeof games === "object" && !Array.isArray(games)) return data;
     } catch (err) {
         console.warn("Could not read saved progress:", err);
     }

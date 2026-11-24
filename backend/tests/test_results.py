@@ -114,6 +114,7 @@ def test_device_ids():
     assert not valid_device_id(None)
     assert not valid_device_id("short")
     assert not valid_device_id("has space in it")
+    assert not valid_device_id("3f2b6c1e-8d4a\n")  # a trailing newline
 
 
 def rows(scores, solved=True, guesses=10):

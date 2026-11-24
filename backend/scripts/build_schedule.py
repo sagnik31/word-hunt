@@ -89,7 +89,7 @@ def main() -> None:
     print(f"Puzzles kept as they were (today and before): {len(past)}")
     print(f"Future puzzles kept: {len(future)}  dropped (pruned): {dropped}")
     print(f"New puzzles added:   {len(new_words)}")
-    print(f"Schedule length:     {len(words)}  -> {SCHEDULE_PATH.relative_to(ROOT)}")
+    print(f"Schedule length:     {len(words)}  -> {SCHEDULE_PATH}")
     print(f"Last puzzle date:    {schedule.date_of(len(words))}")
 
 
