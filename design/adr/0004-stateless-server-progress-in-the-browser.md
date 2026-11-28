@@ -18,7 +18,6 @@ Early versions kept one "current game" in server memory, which meant every playe
 
 ## Alternatives considered
 
-- **Server-side sessions** (a game record per player, updated on every guess). This would make scores trustworthy, but it needs a database on the hot path of every guess, sign-in or session cookies, and cleanup. It's the natural next step if leaderboards ever matter.
 - **A signed start token** (the server signs the puzzle number and start time when Play is pressed, then derives the elapsed time from it). This was suggested to make the clock harder to fake, but it hasn't been built.
 
 ## Consequences

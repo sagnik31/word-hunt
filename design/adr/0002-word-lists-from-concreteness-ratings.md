@@ -12,7 +12,7 @@ The game needs several word lists that have to agree with each other:
 - **hints:** the words a Hint may reveal, which must look ordinary;
 - **word forms:** plurals and verb forms that should count as their base word.
 
-Earlier versions used ad-hoc noun lists from different sources, which disagreed about what a "common word" was. The project also has a firm rule: **only common words, never proper nouns** (no names, places, brands, days or months), as guesses, answers, hints or clues.
+Earlier versions used a single list of about 2,300 nouns, so players could guess nothing else. The project also has a firm rule: **only common words, never proper nouns** (no names, places, brands, days or months), as guesses, answers, hints or clues.
 
 ## Decision
 
@@ -27,9 +27,7 @@ Earlier versions used ad-hoc noun lists from different sources, which disagreed 
 
 ## Alternatives considered
 
-- **Word-frequency lists alone** (for example, the most common N words). Frequency doesn't say whether a word is a picturable thing, and many frequent words are names.
 - **"Known by most people" alone for hints.** Tried and rejected: some ugly inflected forms are known by nearly everyone, so the hint filter also needs a frequency floor and the inflection check.
-- **A part-of-speech tagger or a named-entity model for proper nouns.** Heavier, and less predictable on single words with no sentence around them than a dictionary lookup plus a hand-kept list.
 
 ## Consequences
 

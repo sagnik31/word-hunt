@@ -23,8 +23,6 @@ The first version stored a precomputed similarity table (`data/similarity.txt`, 
 ## Alternatives considered
 
 - **A precomputed similarity table** (the old approach). It's simple at runtime, but its size grows with vocabulary × answers, and it limited guesses to a small noun list. Dropped.
-- **Contextual or API embeddings** (a sentence-transformer, or a hosted embeddings API). They're better at some senses, but they would need either a model in memory on a small server or a paid network call for every guess, plus a cache to keep scores stable. Static vectors are deterministic, free and fast.
-- **Labels from raw similarity** (for example, "Hot above 0.5"). Some answers have many close neighbours and some have few, so a fixed threshold felt very different from day to day. Rank bands don't have that problem.
 
 ## Consequences
 

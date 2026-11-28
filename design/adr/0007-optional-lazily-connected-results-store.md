@@ -26,8 +26,6 @@ After finishing, a player should see how they did against the day's other player
 ## Alternatives considered
 
 - **SQLite on the backend's disk.** Not durable on the free host.
-- **A hosted key-value store or a serverless function.** Another service to run, and the data is naturally a small table.
-- **Connecting and migrating at startup.** Standard, but it would make every cold start depend on waking the database, and keep it from pausing.
 - **Counting in SQL.** Faster for large days, but summarising in Python keeps the SQL portable and is fine for thousands of rows a day. Worth moving into SQL if the table grows.
 
 ## Consequences

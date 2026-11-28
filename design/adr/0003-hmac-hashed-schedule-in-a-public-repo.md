@@ -18,9 +18,7 @@ Every player gets the same secret word each UTC day. The repository is public, a
 
 ## Alternatives considered
 
-- **A private repository or a private data store for the schedule.** More moving parts for a hobby project, and it would make the repo harder to fork and run.
-- **Picking the word with a seeded random generator.** Anyone could rerun the generator from the public code. Keeping the seed secret is equivalent to a key anyway, and an explicit list is easier to edit and freeze.
-- **Encrypting the whole schedule file.** Works, but per-line keyed hashes are simpler, let each line be checked on its own, and make it easy to append without re-encrypting.
+No alternatives were recorded when this was decided.
 
 ## Consequences
 

@@ -18,10 +18,7 @@ Word Hunt is a hobby project with one maintainer and no budget. It needs a publi
 
 ## Alternatives considered
 
-- **A frontend framework with a build step.** The UI is a single page with a few panels, so a framework would add tooling and a build to deploy without much benefit.
-- **Serving the frontend from the API.** One deploy instead of two, but every page load would wait for the free API to wake up, and the static page would no longer be free and always on.
-- **Paid or always-on hosting.** It would remove cold starts, but it isn't worth the cost for a pet project.
-- **Downloading data at deploy time.** It keeps the repo smaller, but deploys would depend on outside servers and take longer.
+No alternatives were recorded when this was decided.
 
 ## Consequences
 

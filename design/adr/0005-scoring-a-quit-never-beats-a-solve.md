@@ -5,10 +5,7 @@
 
 ## Context
 
-A single number has to summarise a play: how long it took, how many guesses, and how much help was used. Players can also quit, which reveals the answer, and a quit should earn something for getting close. Two things went wrong with the first scoring rules:
-
-- quitting near the answer could score more than a slow solve with help, which rewards giving up;
-- the rules were spread across the frontend and the backend, so the numbers on the buttons could drift from the ones used to score.
+A single number has to summarise a play: how long it took, how many guesses, and how much help was used. Players can also quit, which reveals the answer, and a quit should earn something for getting close. The first scoring rules had a flaw: quitting near the answer could score more than a slow solve with help, which rewards giving up.
 
 ## Decision
 
@@ -22,7 +19,6 @@ A single number has to summarise a play: how long it took, how many guesses, and
 ## Alternatives considered
 
 - **Scoring by percentile only** (the old quit score was roughly "half your best percentile, minus help"). Easy to explain, but it let a close quit outscore a solve.
-- **Scoring in the browser.** Simpler, but it puts the rules in two places, and the results comparison needs a score the server worked out.
 - **Server-side scoring from a recorded guess history.** More trustworthy, but it needs a record of each player's guesses on the server, which the game otherwise doesn't keep. Not built.
 
 ## Consequences
