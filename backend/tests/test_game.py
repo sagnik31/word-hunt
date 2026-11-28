@@ -1,3 +1,5 @@
+import threading
+from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 
@@ -32,19 +34,42 @@ def _word_at_rank(ranking, rank):
 
 # --- Ranking ----------------------------------------------------------------
 def test_ranking_cache_is_safe_across_threads(engine, monkeypatch):
-    # Endpoints run on a thread pool; a tiny cache makes evictions collide.
+    # Endpoints run on a thread pool. The race: one thread finds a cached
+    # ranking, another evicts it, and the first one's move_to_end raises
+    # KeyError. The cache below pauses the first thread right after its hit
+    # until the eviction happens, so without the lock this fails every time.
+    # With the lock the eviction has to wait, so the pause times out instead.
+    cached, other = (str(w) for w in engine.words[:2])
+    hit, evicted = threading.Event(), threading.Event()
+
+    class PausingCache(OrderedDict):
+        def get(self, key, default=None):
+            value = super().get(key, default)
+            if key == cached and not hit.is_set():
+                hit.set()
+                evicted.wait(timeout=0.3)
+            return value
+
+        def popitem(self, last=True):
+            item = super().popitem(last=last)
+            evicted.set()
+            return item
+
     monkeypatch.setattr(engine, "CACHE_SIZE", 1)
-    words = [str(w) for w in engine.words[:3]]
+    monkeypatch.setattr(engine, "_rankings", PausingCache())
+    engine.ranking(cached)
+    hit.clear()
 
-    def play(n):
-        for k in range(40):
-            assert engine.ranking(words[(n + k) % 3]).answer == words[(n + k) % 3]
+    def evict():
+        assert hit.wait(timeout=5)
+        return engine.ranking(other)
 
-    with ThreadPoolExecutor(max_workers=8) as pool:
-        list(pool.map(play, range(8)))
-    assert len(engine._rankings) <= 1
-
-
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(engine.ranking, cached)
+        second = pool.submit(evict)
+        assert first.result().answer == cached
+        assert second.result().answer == other
+    assert list(engine._rankings) == [other]
 
 
 def test_ranking_covers_every_other_guess_word(engine, ranking):
